@@ -59,6 +59,13 @@ const STUDENTS = GRADES.flatMap((grade, g) =>
   }),
 );
 
+// Un par de alumnos de 10º (10A). IDs 200010xx -> PIN 1001/1002.
+const EXTRA_STUDENTS = [
+  { id: "20001001", name: "Mariana Castro", grade: "10A" },
+  { id: "20001002", name: "Felipe Romero", grade: "10A" },
+];
+const ALL_STUDENTS = [...STUDENTS, ...EXTRA_STUDENTS];
+
 // Fragmento ORIGINAL (sin derechos de terceros), apto para ~secundaria.
 const EXCERPT = `La noche en que el faro dejó de girar, Mateo supo que algo andaba mal. Desde su ventana, en lo alto del pueblo, el haz de luz siempre barría el mar como un brazo paciente. Pero esa madrugada el faro quedó quieto, apuntando a un solo punto negro del océano, como si hubiera visto algo que no se atrevía a soltar.
 
@@ -198,7 +205,7 @@ async function main() {
   }
 
   console.log("→ Alumnos…");
-  for (const s of STUDENTS) {
+  for (const s of ALL_STUDENTS) {
     await upsertUser(s.id, s.name, "alumno", orgId, s.grade);
   }
 
@@ -220,12 +227,19 @@ async function main() {
   console.log("→ Creando una aventura publicada por grado…");
   const due = new Date();
   due.setDate(due.getDate() + 14);
-  for (const grade of GRADES) {
+  // Carla Díaz (profe de 8C) también atiende 10A.
+  const aventuraGrades = [
+    { grade: "6A", teacherId: teacherIds["6A"] },
+    { grade: "7B", teacherId: teacherIds["7B"] },
+    { grade: "8C", teacherId: teacherIds["8C"] },
+    { grade: "10A", teacherId: teacherIds["8C"] },
+  ];
+  for (const { grade, teacherId } of aventuraGrades) {
     const { data: assignment, error: aErr } = await supabase
       .from("assignments")
       .insert({
         org_id: orgId,
-        teacher_id: teacherIds[grade],
+        teacher_id: teacherId,
         resource_id: resource?.id ?? null,
         title: `Aventura: El faro del fin del mundo · ${grade}`,
         chapter_label: "Fragmento de apertura",
@@ -255,12 +269,12 @@ async function main() {
     );
   }
   console.log("  ─────────────────────────────────────────────");
-  for (const s of STUDENTS) {
+  for (const s of ALL_STUDENTS) {
     console.log(
       `  ALUMNO    ${s.id}  PIN ${pinFromId(s.id)}   ${s.name}  (${s.grade})`,
     );
   }
-  console.log("\n  Aventura publicada en cada grado: 6A, 7B y 8C.");
+  console.log("\n  Aventura publicada en cada grado: 6A, 7B, 8C y 10A.");
 }
 
 main().catch((e) => {

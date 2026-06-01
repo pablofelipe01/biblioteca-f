@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import MissionEditor from "@/components/MissionEditor";
+import AssignmentAssistant, {
+  type AssignmentDraft,
+} from "@/components/AssignmentAssistant";
 import {
   createAssignmentWithMissions,
   type MissionInput,
@@ -36,8 +39,10 @@ type PickedResource = Pick<
 
 export default function NewAssignmentForm({
   initialResource,
+  availableGrades = [],
 }: {
   initialResource: PickedResource | null;
+  availableGrades?: string[];
 }) {
   const supabase = createClient();
 
@@ -206,11 +211,36 @@ export default function NewAssignmentForm({
     }
   }
 
+  function applyDraft(draft: AssignmentDraft) {
+    if (draft.title) setTitle(draft.title);
+    if (draft.chapter_label) setChapterLabel(draft.chapter_label);
+    if (draft.instructions) setInstructions(draft.instructions);
+    if (draft.grade) setGrade(draft.grade);
+    if (draft.school_cycle) setSchoolCycle(draft.school_cycle);
+    if (draft.reading_experience) setReadingExp(draft.reading_experience);
+    if (draft.excerpt_text && draft.excerpt_text.trim()) setExcerpt(draft.excerpt_text);
+    if (draft.missions && draft.missions.length > 0) {
+      setMissions(
+        draft.missions.map((m, i) => ({ ...m, mission_number: i + 1 })),
+      );
+    }
+  }
+
   const busy = parsing || summarizing || generating || saving;
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Nueva tarea</h1>
+
+      <AssignmentAssistant
+        context={{
+          title,
+          grade,
+          school_cycle: schoolCycle,
+          reading_experience: readingExp,
+        }}
+        onApplyDraft={applyDraft}
+      />
 
       {/* 1. Recurso */}
       <Section step={1} title="Elige el libro (o usa un fragmento propio)">
@@ -300,8 +330,21 @@ export default function NewAssignmentForm({
               value={grade}
               onChange={(e) => setGrade(e.target.value)}
               placeholder="Ej. 7B"
+              list="cursos-disponibles"
               className={inputClass}
             />
+            {availableGrades.length > 0 && (
+              <datalist id="cursos-disponibles">
+                {availableGrades.map((g) => (
+                  <option key={g} value={g} />
+                ))}
+              </datalist>
+            )}
+            {availableGrades.length > 0 && (
+              <span className="text-muted mt-1 block text-xs">
+                Cursos: {availableGrades.join(", ")}
+              </span>
+            )}
           </Labeled>
           <Labeled label="Ciclo escolar">
             <select

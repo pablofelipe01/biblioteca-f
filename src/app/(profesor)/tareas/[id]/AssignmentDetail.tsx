@@ -6,6 +6,7 @@ import {
   setPublish,
   updateMission,
   adjustScore,
+  updateAssignmentGrade,
   type MissionInput,
 } from "@/app/(profesor)/tareas/actions";
 import type { Assignment, Mission } from "@/lib/types";
@@ -19,16 +20,21 @@ import {
   ChevronUp,
   Inbox,
   CheckCircle2,
+  Pencil,
+  X,
+  GraduationCap,
 } from "lucide-react";
 
 export default function AssignmentDetail({
   assignment,
   missions,
   submissions,
+  availableGrades = [],
 }: {
   assignment: Assignment;
   missions: Mission[];
   submissions: SubmissionRow[];
+  availableGrades?: string[];
 }) {
   const [published, setPublished] = useState(assignment.is_published);
   const [pubPending, startPub] = useTransition();
@@ -60,12 +66,19 @@ export default function AssignmentDetail({
         <div className="flex-1">
           <h1 className="text-2xl font-bold">{assignment.title}</h1>
           <p className="text-muted text-sm">
-            {assignment.chapter_label && <>{assignment.chapter_label} · </>}
-            {assignment.grade ? `Curso ${assignment.grade}` : "Sin curso asignado"}
+            {assignment.chapter_label && <>{assignment.chapter_label}</>}
             {assignment.due_at && (
-              <> · Entrega {new Date(assignment.due_at).toLocaleString("es")}</>
+              <>
+                {assignment.chapter_label ? " · " : ""}
+                Entrega {new Date(assignment.due_at).toLocaleString("es")}
+              </>
             )}
           </p>
+          <GradeEditor
+            assignmentId={assignment.id}
+            current={assignment.grade}
+            options={availableGrades}
+          />
         </div>
         <button
           onClick={togglePublish}
@@ -156,6 +169,99 @@ export default function AssignmentDetail({
           </div>
         )}
       </section>
+    </div>
+  );
+}
+
+function GradeEditor({
+  assignmentId,
+  current,
+  options,
+}: {
+  assignmentId: string;
+  current: string | null;
+  options: string[];
+}) {
+  const [grade, setGrade] = useState(current ?? "");
+  const [editing, setEditing] = useState(false);
+  const [pending, start] = useTransition();
+
+  function save() {
+    start(async () => {
+      await updateAssignmentGrade(assignmentId, grade);
+      setEditing(false);
+    });
+  }
+
+  const invalid =
+    !!current && options.length > 0 && !options.includes(current);
+
+  if (!editing) {
+    return (
+      <div className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+        <span className="inline-flex items-center gap-1">
+          <GraduationCap className="text-muted h-4 w-4" />
+          {current ? (
+            <>
+              Curso <span className="font-semibold">{current}</span>
+            </>
+          ) : (
+            <span className="text-muted">Sin curso asignado</span>
+          )}
+        </span>
+        {invalid && (
+          <span className="rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+            ⚠ Curso inválido: ningún alumno la verá
+          </span>
+        )}
+        <button
+          onClick={() => setEditing(true)}
+          className="text-brand inline-flex items-center gap-1 text-xs font-medium hover:underline"
+        >
+          <Pencil className="h-3 w-3" /> Editar curso
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <input
+        value={grade}
+        onChange={(e) => setGrade(e.target.value)}
+        list="cursos-detalle"
+        placeholder="Ej. 10A"
+        className="w-32 rounded-lg border bg-background px-3 py-1.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+      />
+      {options.length > 0 && (
+        <datalist id="cursos-detalle">
+          {options.map((g) => (
+            <option key={g} value={g} />
+          ))}
+        </datalist>
+      )}
+      <button
+        onClick={save}
+        disabled={pending}
+        className="bg-adventure inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+      >
+        {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+        Guardar
+      </button>
+      <button
+        onClick={() => {
+          setGrade(current ?? "");
+          setEditing(false);
+        }}
+        className="text-muted inline-flex items-center gap-1 text-xs hover:text-foreground"
+      >
+        <X className="h-3.5 w-3.5" /> Cancelar
+      </button>
+      {options.length > 0 && (
+        <span className="text-muted basis-full text-xs">
+          Cursos: {options.join(", ")}
+        </span>
+      )}
     </div>
   );
 }

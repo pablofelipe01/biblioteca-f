@@ -97,6 +97,19 @@ export async function setPublish(assignmentId: string, publish: boolean) {
   revalidatePath("/tareas");
 }
 
+/** Actualiza el curso destinatario (grade) de una tarea. */
+export async function updateAssignmentGrade(assignmentId: string, grade: string) {
+  await requireTeacher();
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("assignments")
+    .update({ grade: grade.trim() || null })
+    .eq("id", assignmentId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/tareas/${assignmentId}`);
+  revalidatePath("/tareas");
+}
+
 /** Actualiza campos editables de una misión existente. */
 export async function updateMission(
   missionId: string,

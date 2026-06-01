@@ -57,6 +57,20 @@ export default async function TareaDetailPage({
     submissions = (subs as unknown as SubmissionRow[] | null) ?? [];
   }
 
+  // Cursos existentes en la institución (RLS limita a la org del profesor).
+  const { data: gradeRows } = await supabase
+    .from("profiles")
+    .select("grade")
+    .eq("role", "alumno")
+    .not("grade", "is", null);
+  const availableGrades = [
+    ...new Set(
+      (gradeRows as { grade: string | null }[] | null)
+        ?.map((r) => r.grade)
+        .filter((g): g is string => !!g) ?? [],
+    ),
+  ].sort();
+
   return (
     <div>
       <Link
@@ -69,6 +83,7 @@ export default async function TareaDetailPage({
         assignment={assignment as Assignment}
         missions={missions}
         submissions={submissions}
+        availableGrades={availableGrades}
       />
     </div>
   );
