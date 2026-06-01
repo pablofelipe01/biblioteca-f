@@ -34,6 +34,7 @@ const GRADE = "7B";
 const PASSWORD = "Demo1234!";
 const PROFE_EMAIL = "profe.demo@leoaventura.test";
 const ALUMNO_EMAIL = "alumno.demo@leoaventura.test";
+const ADMIN_EMAIL = "admin.demo@leoaventura.test";
 const ASSIGNMENT_TITLE = "Aventura demo: El faro del fin del mundo";
 
 // Fragmento ORIGINAL (sin derechos de terceros), apto para ~7º grado.
@@ -109,7 +110,17 @@ async function main() {
     grade: GRADE,
   });
 
+  console.log("→ Admin…");
+  const adminId = await getOrCreateUser(ADMIN_EMAIL, {
+    full_name: "Admin Demo",
+    role: "admin",
+    org_id: orgId,
+  });
+
   // Aseguramos rol/org/grade en profiles (por si el trigger no recibió metadata).
+  await supabase
+    .from("profiles")
+    .upsert({ id: adminId, full_name: "Admin Demo", role: "admin", org_id: orgId });
   await supabase
     .from("profiles")
     .upsert({ id: profeId, full_name: "Profe Demo", role: "profesor", org_id: orgId });
@@ -212,6 +223,7 @@ async function main() {
   console.log("\n✅ Datos de prueba listos.\n");
   console.log("  Institución:", ORG_NAME, `(${orgId})`);
   console.log("  ──────────────────────────────────────────");
+  console.log("  ADMIN     →", ADMIN_EMAIL, "/", PASSWORD);
   console.log("  PROFESOR  →", PROFE_EMAIL, "/", PASSWORD);
   console.log("  ALUMNO    →", ALUMNO_EMAIL, "/", PASSWORD, `(grado ${GRADE})`);
   console.log("  ──────────────────────────────────────────");
