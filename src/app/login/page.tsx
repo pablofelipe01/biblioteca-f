@@ -3,65 +3,50 @@
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { BookOpen, Loader2, Mail, KeyRound, Sparkles } from "lucide-react";
-
-type Mode = "password" | "magic" | "signup";
+import { idToEmail, isValidId, isValidPin } from "@/lib/login-id";
+import { BookOpen, Loader2, IdCard, KeyRound, Sparkles } from "lucide-react";
 
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
   const redirectTo = params.get("redirect") || "/";
 
-  const [mode, setMode] = useState<Mode>("password");
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
+  const [id, setId] = useState("");
+  const [pin, setPin] = useState("");
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const supabase = createClient();
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setLoading(true);
     setError(null);
-    setMessage(null);
 
+    const cleanId = id.trim();
+    const cleanPin = pin.trim();
+    if (!isValidId(cleanId)) {
+      setError("El ID debe tener 8 dígitos.");
+      return;
+    }
+    if (!isValidPin(cleanPin)) {
+      setError("El PIN debe tener 4 dígitos.");
+      return;
+    }
+
+    setLoading(true);
     try {
-      if (mode === "password") {
-        const { error } = await supabase.auth.signInWithPassword({
-          email,
-          password,
-        });
-        if (error) throw error;
-        router.push(redirectTo);
-        router.refresh();
-      } else if (mode === "signup") {
-        const { error } = await supabase.auth.signUp({
-          email,
-          password,
-          options: {
-            data: { full_name: fullName },
-            emailRedirectTo: `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`,
-          },
-        });
-        if (error) throw error;
-        setMessage(
-          "¡Cuenta creada! Revisa tu correo para confirmarla y luego inicia sesión.",
-        );
-      } else {
-        const { error } = await supabase.auth.signInWithOtp({
-          email,
-          options: {
-            emailRedirectTo: `${window.location.origin}/auth/callback?redirect=${encodeURIComponent(redirectTo)}`,
-          },
-        });
-        if (error) throw error;
-        setMessage("Te enviamos un enlace mágico a tu correo. ¡Ábrelo para entrar!");
+      const { error } = await supabase.auth.signInWithPassword({
+        email: idToEmail(cleanId),
+        password: cleanPin,
+      });
+      if (error) {
+        setError("ID o PIN incorrectos. Verifica tus datos.");
+        return;
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Algo salió mal.");
+      router.push(redirectTo);
+      router.refresh();
+    } catch {
+      setError("No se pudo iniciar sesión. Intenta de nuevo.");
     } finally {
       setLoading(false);
     }
@@ -69,7 +54,7 @@ function LoginForm() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4">
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
           <div className="bg-adventure mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl text-white shadow-lg">
             <BookOpen className="h-8 w-8" />
@@ -81,74 +66,53 @@ function LoginForm() {
         </div>
 
         <div className="bg-card rounded-2xl border p-6 shadow-sm">
-          {/* Selector de modo */}
-          <div className="mb-5 flex gap-1 rounded-xl bg-background p-1 text-sm">
-            {(
-              [
-                ["password", "Entrar"],
-                ["magic", "Enlace mágico"],
-                ["signup", "Crear cuenta"],
-              ] as [Mode, string][]
-            ).map(([m, label]) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => {
-                  setMode(m);
-                  setError(null);
-                  setMessage(null);
-                }}
-                className={`flex-1 rounded-lg px-2 py-1.5 font-medium transition ${
-                  mode === m
-                    ? "bg-card text-brand shadow-sm"
-                    : "text-muted hover:text-foreground"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-
           <form onSubmit={handleSubmit} className="space-y-4">
-            {mode === "signup" && (
-              <Field
-                label="Nombre completo"
-                value={fullName}
-                onChange={setFullName}
-                type="text"
-                placeholder="Tu nombre"
-                required
-              />
-            )}
-            <Field
-              label="Correo electrónico"
-              value={email}
-              onChange={setEmail}
-              type="email"
-              placeholder="tucorreo@colegio.edu"
-              required
-              icon={<Mail className="h-4 w-4" />}
-            />
-            {mode !== "magic" && (
-              <Field
-                label="Contraseña"
-                value={password}
-                onChange={setPassword}
-                type="password"
-                placeholder="••••••••"
-                required
-                icon={<KeyRound className="h-4 w-4" />}
-              />
-            )}
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium">
+                Número de identificación
+              </span>
+              <div className="relative">
+                <span className="text-muted pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
+                  <IdCard className="h-4 w-4" />
+                </span>
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="username"
+                  value={id}
+                  onChange={(e) => setId(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                  placeholder="8 dígitos"
+                  required
+                  className="w-full rounded-xl border bg-background py-2.5 pl-9 pr-3 tracking-widest outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                />
+              </div>
+            </label>
+
+            <label className="block">
+              <span className="mb-1 block text-sm font-medium">PIN</span>
+              <div className="relative">
+                <span className="text-muted pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
+                  <KeyRound className="h-4 w-4" />
+                </span>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="current-password"
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                  placeholder="4 dígitos"
+                  required
+                  className="w-full rounded-xl border bg-background py-2.5 pl-9 pr-3 tracking-[0.5em] outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
+                />
+              </div>
+              <span className="text-muted mt-1 block text-xs">
+                Tu PIN son los últimos 4 dígitos de tu identificación.
+              </span>
+            </label>
 
             {error && (
               <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-danger">
                 {error}
-              </p>
-            )}
-            {message && (
-              <p className="rounded-lg bg-green-50 px-3 py-2 text-sm text-success">
-                {message}
               </p>
             )}
 
@@ -162,61 +126,16 @@ function LoginForm() {
               ) : (
                 <Sparkles className="h-4 w-4" />
               )}
-              {mode === "password"
-                ? "Iniciar sesión"
-                : mode === "signup"
-                  ? "Crear mi cuenta"
-                  : "Enviar enlace mágico"}
+              Entrar
             </button>
           </form>
         </div>
 
         <p className="text-muted mt-6 text-center text-xs">
-          Al continuar aceptas el uso educativo de la plataforma.
+          ¿Problemas para entrar? Contacta a tu institución.
         </p>
       </div>
     </div>
-  );
-}
-
-function Field({
-  label,
-  value,
-  onChange,
-  type,
-  placeholder,
-  required,
-  icon,
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  type: string;
-  placeholder?: string;
-  required?: boolean;
-  icon?: React.ReactNode;
-}) {
-  return (
-    <label className="block">
-      <span className="mb-1 block text-sm font-medium">{label}</span>
-      <div className="relative">
-        {icon && (
-          <span className="text-muted pointer-events-none absolute left-3 top-1/2 -translate-y-1/2">
-            {icon}
-          </span>
-        )}
-        <input
-          type={type}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          required={required}
-          className={`w-full rounded-xl border bg-background py-2.5 ${
-            icon ? "pl-9 pr-3" : "px-3"
-          } outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20`}
-        />
-      </div>
-    </label>
   );
 }
 
