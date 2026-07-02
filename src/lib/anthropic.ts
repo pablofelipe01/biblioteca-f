@@ -1,14 +1,45 @@
 import "server-only";
 import Anthropic from "@anthropic-ai/sdk";
+import { NextResponse } from "next/server";
 
-/** Cliente Anthropic. SOLO servidor: la API key nunca llega al navegador. */
-export const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-});
+/** Error específico: falta la API key de Anthropic en el servidor. */
+export class MissingAnthropicKeyError extends Error {
+  constructor() {
+    super(
+      "Falta configurar ANTHROPIC_API_KEY en el servidor. Agrégala en .env.local y reinicia el servidor de desarrollo.",
+    );
+    this.name = "MissingAnthropicKeyError";
+  }
+}
 
-// El spec pedía "claude-sonnet-4-20250514", pero ese modelo está DEPRECADO
-// (fin de vida 15-jun-2026). Usamos el Sonnet actual. Cambia aquí si lo necesitas.
-export const AI_MODEL = "claude-sonnet-4-6";
+/**
+ * Cliente Anthropic (SOLO servidor: la API key nunca llega al navegador).
+ * Se construye de forma perezosa: si la key falta, lanzamos un error claro
+ * DENTRO del handler (no al importar el módulo), para que la ruta pueda
+ * responder con JSON en vez de una página de error HTML.
+ */
+let client: Anthropic | null = null;
+export function getAnthropic(): Anthropic {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new MissingAnthropicKeyError();
+  if (!client) client = new Anthropic({ apiKey });
+  return client;
+}
+
+/**
+ * Respuesta de error uniforme para las rutas de IA. Convierte la falta de
+ * API key en un mensaje entendible (503) y cualquier otro fallo en el mensaje
+ * genérico de la ruta (500). Siempre devuelve JSON.
+ */
+export function aiErrorResponse(err: unknown, fallback: string): NextResponse {
+  if (err instanceof MissingAnthropicKeyError) {
+    return NextResponse.json({ error: err.message }, { status: 503 });
+  }
+  console.error(fallback, err);
+  return NextResponse.json({ error: fallback }, { status: 500 });
+}
+
+export const AI_MODEL = "claude-sonnet-5";
 
 /**
  * Extrae el primer objeto JSON válido de un texto que puede venir con fences

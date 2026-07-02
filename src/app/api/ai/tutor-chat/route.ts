@@ -1,7 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSessionProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { anthropic, AI_MODEL, textFromMessage } from "@/lib/anthropic";
+import {
+  getAnthropic,
+  aiErrorResponse,
+  AI_MODEL,
+  textFromMessage,
+} from "@/lib/anthropic";
 import { TUTOR_CHAT_SYSTEM } from "@/lib/prompts";
 
 const MAX_TURNS = 10;
@@ -60,9 +65,10 @@ export async function POST(req: NextRequest) {
   ];
 
   try {
-    const reply = await anthropic.messages.create({
+    const reply = await getAnthropic().messages.create({
       model: AI_MODEL,
       max_tokens: 500,
+      thinking: { type: "disabled" },
       system,
       messages,
     });
@@ -78,10 +84,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ reply: text });
   } catch (err) {
-    console.error("tutor-chat error:", err);
-    return NextResponse.json(
-      { error: "El tutor no pudo responder ahora." },
-      { status: 500 },
-    );
+    return aiErrorResponse(err, "El tutor no pudo responder ahora.");
   }
 }

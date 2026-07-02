@@ -1,7 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSessionProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { anthropic, AI_MODEL, parseJsonLoose, textFromMessage } from "@/lib/anthropic";
+import {
+  getAnthropic,
+  aiErrorResponse,
+  AI_MODEL,
+  parseJsonLoose,
+  textFromMessage,
+} from "@/lib/anthropic";
 import { ASSIGNMENT_ASSISTANT_SYSTEM } from "@/lib/prompts";
 import type { MissionType } from "@/lib/types";
 
@@ -126,9 +132,10 @@ export async function POST(req: NextRequest) {
   ];
 
   try {
-    const completion = await anthropic.messages.create({
+    const completion = await getAnthropic().messages.create({
       model: AI_MODEL,
       max_tokens: 2000,
+      thinking: { type: "disabled" },
       system,
       messages,
     });
@@ -181,10 +188,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ reply, draft });
   } catch (err) {
-    console.error("assignment-assistant error:", err);
-    return NextResponse.json(
-      { error: "El asistente no pudo responder ahora." },
-      { status: 500 },
-    );
+    return aiErrorResponse(err, "El asistente no pudo responder ahora.");
   }
 }

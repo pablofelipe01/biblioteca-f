@@ -1,6 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSessionProfile } from "@/lib/auth";
-import { anthropic, AI_MODEL, parseJsonLoose, textFromMessage } from "@/lib/anthropic";
+import {
+  getAnthropic,
+  aiErrorResponse,
+  AI_MODEL,
+  parseJsonLoose,
+  textFromMessage,
+} from "@/lib/anthropic";
 import { SUMMARIZE_SYSTEM } from "@/lib/prompts";
 
 const MAX_EXCERPT = 14000;
@@ -30,9 +36,10 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const message = await anthropic.messages.create({
+    const message = await getAnthropic().messages.create({
       model: AI_MODEL,
       max_tokens: 700,
+      thinking: { type: "disabled" },
       system: SUMMARIZE_SYSTEM,
       messages: [{ role: "user", content: `FRAGMENTO:\n"""\n${excerpt}\n"""` }],
     });
@@ -51,10 +58,6 @@ export async function POST(req: NextRequest) {
       suggested_cycle: parsed.suggested_cycle ?? null,
     });
   } catch (err) {
-    console.error("summarize error:", err);
-    return NextResponse.json(
-      { error: "No se pudo resumir el fragmento." },
-      { status: 500 },
-    );
+    return aiErrorResponse(err, "No se pudo resumir el fragmento.");
   }
 }

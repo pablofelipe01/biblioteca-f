@@ -1,7 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSessionProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { anthropic, AI_MODEL, parseJsonLoose, textFromMessage } from "@/lib/anthropic";
+import {
+  getAnthropic,
+  aiErrorResponse,
+  AI_MODEL,
+  parseJsonLoose,
+  textFromMessage,
+} from "@/lib/anthropic";
 import { GRADE_SUBMISSION_SYSTEM } from "@/lib/prompts";
 import { recordGradedSubmission } from "@/lib/gamification";
 import type { MissionType } from "@/lib/types";
@@ -84,9 +90,10 @@ export async function POST(req: NextRequest) {
 
       const userMessage = `CONSIGNA:\n${consigna}\n\nRÚBRICA:\n${rubric}\n\nCICLO ESCOLAR: ${schoolCycle ?? "no especificado"}\n\nRESPUESTA DEL ESTUDIANTE:\n"""\n${studentText}\n"""`;
 
-      const message = await anthropic.messages.create({
+      const message = await getAnthropic().messages.create({
         model: AI_MODEL,
         max_tokens: 500,
+        thinking: { type: "disabled" },
         system: GRADE_SUBMISSION_SYSTEM,
         messages: [{ role: "user", content: userMessage }],
       });
@@ -111,10 +118,6 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ score, feedback, ...reward });
   } catch (err) {
-    console.error("grade-submission error:", err);
-    return NextResponse.json(
-      { error: "No se pudo calificar la respuesta." },
-      { status: 500 },
-    );
+    return aiErrorResponse(err, "No se pudo calificar la respuesta.");
   }
 }

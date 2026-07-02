@@ -1,6 +1,12 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { getSessionProfile } from "@/lib/auth";
-import { anthropic, AI_MODEL, parseJsonLoose, textFromMessage } from "@/lib/anthropic";
+import {
+  getAnthropic,
+  aiErrorResponse,
+  AI_MODEL,
+  parseJsonLoose,
+  textFromMessage,
+} from "@/lib/anthropic";
 import { GENERATE_MISSIONS_SYSTEM } from "@/lib/prompts";
 import type { MissionType } from "@/lib/types";
 
@@ -61,9 +67,10 @@ Contexto:
 Genera las misiones ahora.`;
 
   try {
-    const message = await anthropic.messages.create({
+    const message = await getAnthropic().messages.create({
       model: AI_MODEL,
       max_tokens: 2500,
+      thinking: { type: "disabled" },
       system: GENERATE_MISSIONS_SYSTEM,
       messages: [{ role: "user", content: userMessage }],
     });
@@ -99,10 +106,6 @@ Genera las misiones ahora.`;
 
     return NextResponse.json({ missions: clean });
   } catch (err) {
-    console.error("generate-missions error:", err);
-    return NextResponse.json(
-      { error: "No se pudieron generar las misiones." },
-      { status: 500 },
-    );
+    return aiErrorResponse(err, "No se pudieron generar las misiones.");
   }
 }
