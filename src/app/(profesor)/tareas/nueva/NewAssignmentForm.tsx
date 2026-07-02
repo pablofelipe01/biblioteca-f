@@ -111,7 +111,11 @@ export default function NewAssignmentForm({
       fd.append("file", file);
       const res = await fetch("/api/parse-pdf", { method: "POST", body: fd });
       const json = await res.json();
-      if (!res.ok) throw new Error(json.error ?? "Error al procesar PDF");
+      if (!res.ok)
+        throw new Error(
+          [json.error, json.detail].filter(Boolean).join(" — ") ||
+            "Error al procesar PDF",
+        );
       setExcerpt((prev) => (prev ? `${prev}\n\n${json.text}` : json.text));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al procesar PDF");
