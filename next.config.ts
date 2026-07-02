@@ -15,8 +15,9 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // pdf-parse usa APIs de Node; evitamos que el bundler intente empaquetarlo.
-  serverExternalPackages: ["pdf-parse"],
+  // pdf-parse (y su dependencia pdfjs-dist) usan APIs de Node; los dejamos
+  // fuera del bundle para que se resuelvan en runtime desde node_modules.
+  serverExternalPackages: ["pdf-parse", "pdfjs-dist"],
 };
 
 export default nextConfig;
