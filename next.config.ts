@@ -15,9 +15,10 @@ const nextConfig: NextConfig = {
       },
     ],
   },
-  // pdf-parse (y su dependencia pdfjs-dist) usan APIs de Node; los dejamos
-  // fuera del bundle para que se resuelvan en runtime desde node_modules.
-  serverExternalPackages: ["pdf-parse", "pdfjs-dist"],
+  // pdf-parse (y sus dependencias pdfjs-dist y @napi-rs/canvas, esta última con
+  // binario nativo) usan APIs de Node; los dejamos fuera del bundle para que se
+  // resuelvan en runtime desde node_modules.
+  serverExternalPackages: ["pdf-parse", "pdfjs-dist", "@napi-rs/canvas"],
 };
 
 export default nextConfig;

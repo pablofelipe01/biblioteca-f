@@ -37,6 +37,19 @@ export async function POST(req: NextRequest) {
   }
 
   try {
+    // pdfjs-dist (dentro de pdf-parse) espera globals del navegador —DOMMatrix,
+    // Path2D, ImageData— que no existen en el runtime serverless de Node. Sin
+    // ellos falla con "ReferenceError: DOMMatrix is not defined". Los aportamos
+    // desde @napi-rs/canvas (ya es dependencia de pdf-parse) antes de cargar el
+    // módulo. En local puede que existan; por eso solo falla en producción.
+    const g = globalThis as Record<string, unknown>;
+    if (typeof g.DOMMatrix === "undefined") {
+      const canvas = await import("@napi-rs/canvas");
+      g.DOMMatrix = canvas.DOMMatrix;
+      g.Path2D = canvas.Path2D;
+      g.ImageData = canvas.ImageData;
+    }
+
     // Import dinámico: si la carga del módulo (o su binario nativo) falla en el
     // entorno serverless, lo capturamos aquí y respondemos JSON en vez de HTML.
     const { PDFParse } = await import("pdf-parse");
