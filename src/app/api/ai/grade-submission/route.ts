@@ -35,7 +35,7 @@ export async function POST(req: NextRequest) {
   const { data: mission } = await supabase
     .from("missions")
     .select(
-      "id, type, data, points, assignment_id, assignment:assignments!inner(school_cycle)",
+      "id, type, data, points, assignment_id, assignment:assignments!inner(resource:resources(school_cycle))",
     )
     .eq("id", body.mission_id)
     .single();
@@ -51,8 +51,11 @@ export async function POST(req: NextRequest) {
   const data = (mission.data ?? {}) as Record<string, unknown>;
   const response = body.response ?? {};
   const schoolCycle =
-    (mission.assignment as unknown as { school_cycle: string | null } | null)
-      ?.school_cycle ?? null;
+    (
+      mission.assignment as unknown as {
+        resource: { school_cycle: string | null } | null;
+      } | null
+    )?.resource?.school_cycle ?? null;
 
   let score = 0;
   let feedback = "";
