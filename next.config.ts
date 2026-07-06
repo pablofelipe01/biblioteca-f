@@ -19,6 +19,12 @@ const nextConfig: NextConfig = {
   // binario nativo) usan APIs de Node; los dejamos fuera del bundle para que se
   // resuelvan en runtime desde node_modules.
   serverExternalPackages: ["pdf-parse", "pdfjs-dist", "@napi-rs/canvas"],
+  // pdfjs-dist carga su worker con una ruta construida en runtime, que el
+  // tracer no sigue; sin él Vercel falla con "Setting up fake worker failed:
+  // Cannot find module …/pdf.worker.mjs". Lo forzamos al bundle de esta ruta.
+  outputFileTracingIncludes: {
+    "/api/parse-pdf": ["./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs"],
+  },
 };
 
 export default nextConfig;
