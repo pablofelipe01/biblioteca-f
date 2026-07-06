@@ -29,9 +29,11 @@ export interface AssistantContext {
 
 export default function AssignmentAssistant({
   context,
+  bookTitle,
   onApplyDraft,
 }: {
   context: AssistantContext;
+  bookTitle?: string;
   onApplyDraft: (draft: AssignmentDraft) => void;
 }) {
   const [history, setHistory] = useState<Turn[]>([]);
@@ -40,10 +42,21 @@ export default function AssignmentAssistant({
   const [draft, setDraft] = useState<AssignmentDraft | null>(null);
   const [applied, setApplied] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const seededFor = useRef<string | null>(null);
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [history, loading]);
+
+  // Cuando el docente llega con un libro ya elegido (o escoge uno del catálogo),
+  // precargamos su título en el cuadro del asistente para que pueda enviar de una
+  // vez sin re-escribirlo. Solo mientras no haya empezado la conversación.
+  useEffect(() => {
+    const t = bookTitle?.trim();
+    if (!t || history.length > 0 || seededFor.current === t) return;
+    seededFor.current = t;
+    setInput(t);
+  }, [bookTitle, history.length]);
 
   async function send() {
     const msg = input.trim();

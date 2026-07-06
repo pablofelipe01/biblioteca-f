@@ -243,6 +243,7 @@ export default function NewAssignmentForm({
           school_cycle: schoolCycle,
           reading_experience: readingExp,
         }}
+        bookTitle={resource?.title}
         onApplyDraft={applyDraft}
       />
 
