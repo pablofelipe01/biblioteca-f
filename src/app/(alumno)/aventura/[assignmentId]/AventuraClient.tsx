@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import TutorChat from "./TutorChat";
 import { askTeacher } from "@/app/(alumno)/actions";
-import type { StudentMission } from "./page";
+import type { StudentMission, StudentQuestion } from "./page";
 import type { AccessLink } from "@/lib/types";
 import {
   Lock,
@@ -44,6 +44,7 @@ export default function AventuraClient({
   excerpt,
   accessLinks,
   missions: initial,
+  questions,
 }: {
   assignmentId: string;
   title: string;
@@ -52,6 +53,7 @@ export default function AventuraClient({
   excerpt: string;
   accessLinks: AccessLink[];
   missions: Mission[];
+  questions: StudentQuestion[];
 }) {
   const router = useRouter();
   const [missions, setMissions] = useState<Mission[]>(initial);
@@ -124,7 +126,7 @@ export default function AventuraClient({
           </div>
         </div>
 
-        <AskTeacher assignmentId={assignmentId} />
+        <AskTeacher assignmentId={assignmentId} questions={questions} />
       </div>
 
       {/* Mapa de misiones */}
@@ -376,7 +378,14 @@ function MissionStep({
   );
 }
 
-function AskTeacher({ assignmentId }: { assignmentId: string }) {
+function AskTeacher({
+  assignmentId,
+  questions,
+}: {
+  assignmentId: string;
+  questions: StudentQuestion[];
+}) {
+  const router = useRouter();
   const [q, setQ] = useState("");
   const [sent, setSent] = useState(false);
   const [pending, start] = useTransition();
@@ -387,6 +396,7 @@ function AskTeacher({ assignmentId }: { assignmentId: string }) {
       await askTeacher(assignmentId, q);
       setQ("");
       setSent(true);
+      router.refresh(); // trae la nueva pregunta a la lista
     });
   }
 
@@ -396,6 +406,30 @@ function AskTeacher({ assignmentId }: { assignmentId: string }) {
         <MessageCircleQuestion className="h-4 w-4 text-brand" />
         Pregúntale a tu profe
       </p>
+
+      {questions.length > 0 && (
+        <ul className="mb-3 space-y-2">
+          {questions.map((item) => (
+            <li
+              key={item.id}
+              className="bg-background rounded-xl border p-3 text-sm"
+            >
+              <p className="font-medium">{item.question}</p>
+              {item.teacher_response ? (
+                <p className="mt-1.5 rounded-lg bg-brand/5 p-2 leading-relaxed text-foreground/80">
+                  <span className="font-semibold text-brand">Profe: </span>
+                  {item.teacher_response}
+                </p>
+              ) : (
+                <p className="text-muted mt-1 text-xs italic">
+                  Aún sin responder…
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+
       <textarea
         value={q}
         onChange={(e) => {

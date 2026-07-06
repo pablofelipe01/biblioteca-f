@@ -22,6 +22,13 @@ export interface StudentMission {
   ai_score: number | null;
 }
 
+export interface StudentQuestion {
+  id: string;
+  question: string;
+  teacher_response: string | null;
+  created_at: string;
+}
+
 export default async function AventuraPage({
   params,
 }: {
@@ -80,6 +87,18 @@ export default async function AventuraPage({
     }
   }
 
+  // Preguntas del alumno para esta aventura, con la respuesta del profe (si la hay).
+  let questions: StudentQuestion[] = [];
+  if (session) {
+    const { data: questionsData } = await supabase
+      .from("student_questions")
+      .select("id, question, teacher_response, created_at")
+      .eq("assignment_id", assignmentId)
+      .eq("student_id", session.userId)
+      .order("created_at", { ascending: false });
+    questions = (questionsData as StudentQuestion[] | null) ?? [];
+  }
+
   // Saneamos los datos de cada misión para NO enviar la respuesta correcta al navegador.
   const studentMissions: StudentMission[] = missions.map((m) => {
     const raw = (m.data ?? {}) as unknown as Record<string, unknown>;
@@ -130,6 +149,7 @@ export default async function AventuraPage({
           Array.isArray(a.resource?.access_links) ? a.resource!.access_links : []
         }
         missions={studentMissions}
+        questions={questions}
       />
     </div>
   );
