@@ -25,7 +25,7 @@ function LoginForm() {
     const cleanId = id.trim();
     const cleanPin = pin.trim();
     if (!isValidId(cleanId)) {
-      setError("El ID debe tener 8 dígitos.");
+      setError("Ingresa tu número de documento (6 a 11 dígitos).");
       return;
     }
     if (!isValidPin(cleanPin)) {
@@ -80,8 +80,8 @@ function LoginForm() {
                   inputMode="numeric"
                   autoComplete="username"
                   value={id}
-                  onChange={(e) => setId(e.target.value.replace(/\D/g, "").slice(0, 8))}
-                  placeholder="8 dígitos"
+                  onChange={(e) => setId(e.target.value.replace(/\D/g, "").slice(0, 11))}
+                  placeholder="Tu número de documento"
                   required
                   className="w-full rounded-xl border bg-background py-2.5 pl-9 pr-3 tracking-widest outline-none transition focus:border-brand focus:ring-2 focus:ring-brand/20"
                 />

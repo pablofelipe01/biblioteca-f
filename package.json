@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "eslint",
     "seed:catalog": "tsx scripts/seed-catalog.ts",
-    "seed:test": "tsx scripts/seed-test-data.ts"
+    "seed:test": "tsx scripts/seed-test-data.ts",
+    "seed:guaicaramo": "tsx scripts/seed-guaicaramo.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",

@@ -15,9 +15,10 @@ export function pinFromId(id: string): string {
   return id.trim().slice(-4);
 }
 
-/** Valida que el ID tenga exactamente 8 dígitos. */
+/** Valida que el ID sea numérico y de largo plausible para un documento
+ * (T.I./C.C. colombianos suelen tener 8–10 dígitos; aceptamos 6–11). */
 export function isValidId(id: string): boolean {
-  return /^\d{8}$/.test(id.trim());
+  return /^\d{6,11}$/.test(id.trim());
 }
 
 /** Valida que el PIN tenga exactamente 4 dígitos. */
