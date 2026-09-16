@@ -10,7 +10,33 @@ import {
 } from "@/lib/anthropic";
 import { GRADE_SUBMISSION_SYSTEM } from "@/lib/prompts";
 import { recordGradedSubmission } from "@/lib/gamification";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { IMAGE_BUCKET, MAX_IMAGES, isOwnAnswerPath } from "@/lib/images";
 import type { MissionType } from "@/lib/types";
+import type Anthropic from "@anthropic-ai/sdk";
+
+type ImageMediaType = "image/jpeg" | "image/png" | "image/webp" | "image/gif";
+const IMAGE_TYPES: ImageMediaType[] = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+
+/** Descarga las imágenes de la respuesta (service key) como bloques para Claude. */
+async function loadImageBlocks(paths: string[]): Promise<Anthropic.ImageBlockParam[]> {
+  if (paths.length === 0) return [];
+  const admin = createAdminClient();
+  const blocks: Anthropic.ImageBlockParam[] = [];
+  for (const path of paths) {
+    const { data } = await admin.storage.from(IMAGE_BUCKET).download(path);
+    if (!data) continue;
+    const ext = path.split(".").pop()?.toLowerCase();
+    const fromExt: ImageMediaType =
+      ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : ext === "gif" ? "image/gif" : "image/jpeg";
+    const mediaType = IMAGE_TYPES.includes(data.type as ImageMediaType)
+      ? (data.type as ImageMediaType)
+      : fromExt;
+    const base64 = Buffer.from(await data.arrayBuffer()).toString("base64");
+    blocks.push({ type: "image", source: { type: "base64", media_type: mediaType, data: base64 } });
+  }
+  return blocks;
+}
 
 export async function POST(req: NextRequest) {
   const session = await getSessionProfile();
@@ -49,7 +75,8 @@ export async function POST(req: NextRequest) {
 
   const type = mission.type as MissionType;
   const data = (mission.data ?? {}) as Record<string, unknown>;
-  const response = body.response ?? {};
+  const rawResponse = body.response ?? {};
+  let response: Record<string, unknown> = rawResponse;
   const schoolCycle =
     (
       mission.assignment as unknown as {
@@ -63,7 +90,7 @@ export async function POST(req: NextRequest) {
   try {
     if (type === "quiz") {
       // Corrección por código (sin IA).
-      const selected = Number(response.selected_index);
+      const selected = Number(rawResponse.selected_index);
       const correct = Number(data.correct_index);
       if (Number.isNaN(selected)) {
         return NextResponse.json(
@@ -71,19 +98,26 @@ export async function POST(req: NextRequest) {
           { status: 400 },
         );
       }
+      response = { selected_index: selected };
       score = selected === correct ? 100 : 0;
       feedback =
         (data.explanation as string) ??
         (score === 100 ? "¡Correcto!" : "Esa no era. Repasa el fragmento.");
     } else {
-      // open / creative -> evalúa Claude.
-      const studentText = String(response.text ?? "").trim();
-      if (studentText.length < 1) {
+      // open / creative -> evalúa Claude (texto y/o imágenes).
+      const studentText = String(rawResponse.text ?? "").trim();
+      const orgId = session.profile.org_id ?? "";
+      const images = (Array.isArray(rawResponse.images) ? rawResponse.images : [])
+        .filter((p): p is string => typeof p === "string")
+        .filter((p) => !!orgId && isOwnAnswerPath(p, orgId, session.userId))
+        .slice(0, MAX_IMAGES);
+      if (studentText.length < 1 && images.length === 0) {
         return NextResponse.json(
-          { error: "Escribe tu respuesta antes de enviar." },
+          { error: "Escribe tu respuesta o sube una imagen antes de enviar." },
           { status: 400 },
         );
       }
+      response = { text: studentText, images };
       const consigna = (data.prompt as string) ?? "";
       const rubric =
         (data.rubric as string) ??
@@ -91,14 +125,24 @@ export async function POST(req: NextRequest) {
           ? `Reto creativo. Mínimo ${data.min_words ?? 40} palabras. Valora la creatividad y la conexión con la lectura.`
           : "Valora la comprensión e interpretación.");
 
-      const userMessage = `CONSIGNA:\n${consigna}\n\nRÚBRICA:\n${rubric}\n\nCICLO ESCOLAR: ${schoolCycle ?? "no especificado"}\n\nRESPUESTA DEL ESTUDIANTE:\n"""\n${studentText}\n"""`;
+      const imageBlocks = await loadImageBlocks(images);
+      const imageNote =
+        imageBlocks.length > 0
+          ? `\n\nEl estudiante adjuntó ${imageBlocks.length} imagen(es) (a continuación) que FORMAN PARTE de su respuesta: pueden ser dibujos, fotos de su cuaderno o evidencias. Evalúalas junto con el texto.`
+          : "";
+      const userMessage = `CONSIGNA:\n${consigna}\n\nRÚBRICA:\n${rubric}\n\nCICLO ESCOLAR: ${schoolCycle ?? "no especificado"}\n\nRESPUESTA DEL ESTUDIANTE:\n"""\n${studentText || "(sin texto, solo imágenes)"}\n"""${imageNote}`;
 
       const message = await getAnthropic().messages.create({
         model: AI_MODEL,
         max_tokens: 500,
         thinking: { type: "disabled" },
         system: GRADE_SUBMISSION_SYSTEM,
-        messages: [{ role: "user", content: userMessage }],
+        messages: [
+          {
+            role: "user",
+            content: [{ type: "text", text: userMessage }, ...imageBlocks],
+          },
+        ],
       });
 
       const parsed = parseJsonLoose<{ score?: number; feedback?: string }>(

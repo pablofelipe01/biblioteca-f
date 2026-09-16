@@ -1,7 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import type { MissionInput } from "@/app/(profesor)/tareas/actions";
-import { Trash2, HelpCircle, PenLine, Wand2 } from "lucide-react";
+import ImageUploader, { type UploadedImage } from "@/components/ImageUploader";
+import { Trash2, HelpCircle, PenLine, Wand2, ImageIcon } from "lucide-react";
+
+/** Misión en edición: además de las rutas guarda las previsualizaciones. */
+export type EditorMission = MissionInput & { images?: UploadedImage[] };
 
 const TYPE_META: Record<
   MissionInput["type"],
@@ -20,13 +25,20 @@ export default function MissionEditor({
   index,
   onChange,
   onRemove,
+  orgId,
+  removeWarning,
 }: {
-  mission: MissionInput;
+  mission: EditorMission;
   index: number;
-  onChange: (m: MissionInput) => void;
+  onChange: (m: EditorMission) => void;
   onRemove?: () => void;
+  /** Si se pasa, permite adjuntar imágenes de referencia a la misión. */
+  orgId?: string | null;
+  /** Texto de advertencia; si existe, eliminar pide confirmación. */
+  removeWarning?: string | null;
 }) {
   const meta = TYPE_META[mission.type];
+  const [confirming, setConfirming] = useState(false);
 
   function setData(patch: Record<string, unknown>) {
     onChange({ ...mission, data: { ...mission.data, ...patch } });
@@ -58,7 +70,7 @@ export default function MissionEditor({
           {onRemove && (
             <button
               type="button"
-              onClick={onRemove}
+              onClick={() => (removeWarning ? setConfirming(true) : onRemove())}
               title="Eliminar misión"
               className="text-muted hover:text-danger"
             >
@@ -67,6 +79,29 @@ export default function MissionEditor({
           )}
         </div>
       </div>
+
+      {confirming && onRemove && (
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl bg-red-50 p-3 text-xs text-danger">
+          <span className="flex-1">{removeWarning}</span>
+          <button
+            type="button"
+            onClick={() => {
+              setConfirming(false);
+              onRemove();
+            }}
+            className="rounded-lg bg-danger px-2.5 py-1 font-semibold text-white"
+          >
+            Sí, eliminar
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirming(false)}
+            className="rounded-lg border bg-card px-2.5 py-1 font-medium text-foreground"
+          >
+            Cancelar
+          </button>
+        </div>
+      )}
 
       <input
         value={mission.title}
@@ -158,6 +193,26 @@ export default function MissionEditor({
               className="w-20 rounded-lg border bg-background px-2 py-1 text-sm"
             />
           </label>
+        </div>
+      )}
+      {orgId && (
+        <div className="mt-3 border-t pt-3">
+          <p className="text-muted mb-2 flex items-center gap-1.5 text-xs font-medium">
+            <ImageIcon className="h-3.5 w-3.5" /> Imágenes de referencia (opcional)
+          </p>
+          <ImageUploader
+            orgId={orgId}
+            folder="refs"
+            compact
+            value={mission.images ?? []}
+            onChange={(images) =>
+              onChange({
+                ...mission,
+                images,
+                reference_images: images.map((i) => i.path),
+              })
+            }
+          />
         </div>
       )}
     </div>

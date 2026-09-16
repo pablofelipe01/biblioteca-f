@@ -2,17 +2,20 @@
 
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import MissionEditor from "@/components/MissionEditor";
+import MissionEditor, { type EditorMission } from "@/components/MissionEditor";
+import ImageUploader, { type UploadedImage } from "@/components/ImageUploader";
 import AssignmentAssistant, {
   type AssignmentDraft,
 } from "@/components/AssignmentAssistant";
 import {
   createAssignmentWithMissions,
+  updateAssignment,
   type MissionInput,
 } from "@/app/(profesor)/tareas/actions";
 import {
   SCHOOL_CYCLES,
   READING_EXPERIENCES,
+  type GroupMode,
   type MissionType,
   type Resource,
 } from "@/lib/types";
@@ -27,22 +30,54 @@ import {
   X,
   Save,
   Send,
+  Users,
 } from "lucide-react";
 
 const inputClass =
   "w-full rounded-xl border bg-card px-3 py-2.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20";
 
-type PickedResource = Pick<
+export type PickedResource = Pick<
   Resource,
   "id" | "title" | "author" | "school_cycle" | "reading_experience"
 >;
 
+/** Datos de una tarea existente para abrir el formulario en modo edición. */
+export interface EditableAssignment {
+  id: string;
+  title: string;
+  chapter_label: string | null;
+  instructions: string | null;
+  excerpt_text: string;
+  grade: string | null;
+  due_at: string | null;
+  reference_images: UploadedImage[];
+  is_group: boolean;
+  group_mode: GroupMode;
+  group_max_size: number | null;
+  group_count: number;
+  missions: EditorMission[];
+  /** misión → número de entregas (para advertir antes de borrarla). */
+  submissionCounts: Record<string, number>;
+}
+
+/** ISO → valor de <input type="datetime-local"> en hora local. */
+function toLocalInput(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export default function NewAssignmentForm({
   initialResource,
   availableGrades = [],
+  orgId,
+  editing,
 }: {
   initialResource: PickedResource | null;
   availableGrades?: string[];
+  orgId: string | null;
+  editing?: EditableAssignment;
 }) {
   const supabase = createClient();
 
@@ -52,13 +87,22 @@ export default function NewAssignmentForm({
   const [searching, setSearching] = useState(false);
 
   const [title, setTitle] = useState(
-    initialResource ? `Lectura: ${initialResource.title}` : "",
+    editing?.title ?? (initialResource ? `Lectura: ${initialResource.title}` : ""),
   );
-  const [chapterLabel, setChapterLabel] = useState("");
-  const [instructions, setInstructions] = useState("");
-  const [grade, setGrade] = useState("");
-  const [dueAt, setDueAt] = useState("");
-  const [excerpt, setExcerpt] = useState("");
+  const [chapterLabel, setChapterLabel] = useState(editing?.chapter_label ?? "");
+  const [instructions, setInstructions] = useState(editing?.instructions ?? "");
+  const [grade, setGrade] = useState(editing?.grade ?? "");
+  const [dueAt, setDueAt] = useState(toLocalInput(editing?.due_at ?? null));
+  const [excerpt, setExcerpt] = useState(editing?.excerpt_text ?? "");
+  const [refImages, setRefImages] = useState<UploadedImage[]>(
+    editing?.reference_images ?? [],
+  );
+  const [isGroup, setIsGroup] = useState(editing?.is_group ?? false);
+  const [groupMode, setGroupMode] = useState<GroupMode>(editing?.group_mode ?? "teacher");
+  const [groupCount, setGroupCount] = useState(editing?.group_count || 4);
+  const [groupMaxSize, setGroupMaxSize] = useState(
+    editing?.group_max_size?.toString() ?? "",
+  );
   const [schoolCycle, setSchoolCycle] = useState(
     initialResource?.school_cycle ?? "",
   );
@@ -66,7 +110,7 @@ export default function NewAssignmentForm({
     initialResource?.reading_experience ?? "",
   );
 
-  const [missions, setMissions] = useState<MissionInput[]>([]);
+  const [missions, setMissions] = useState<EditorMission[]>(editing?.missions ?? []);
 
   const [parsing, setParsing] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
@@ -161,7 +205,9 @@ export default function NewAssignmentForm({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Error al generar misiones");
-      setMissions(json.missions as MissionInput[]);
+      const generated = json.missions as MissionInput[];
+      // Al editar, las nuevas se agregan para no borrar misiones con respuestas.
+      setMissions((prev) => (editing ? [...prev, ...generated] : generated));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error al generar misiones");
     } finally {
@@ -170,7 +216,7 @@ export default function NewAssignmentForm({
   }
 
   function addMission(type: MissionType) {
-    const base: MissionInput = {
+    const base: EditorMission = {
       mission_number: missions.length + 1,
       type,
       title: "",
@@ -193,9 +239,13 @@ export default function NewAssignmentForm({
     if (missions.length === 0)
       return setError("Agrega al menos una misión (genera con IA o manual).");
 
+    const maxSize = groupMaxSize.trim() ? parseInt(groupMaxSize) : null;
+    if (isGroup && (groupCount < 1 || (maxSize != null && (Number.isNaN(maxSize) || maxSize < 1))))
+      return setError("Revisa la configuración de grupos.");
+
     setSaving(true);
     try {
-      await createAssignmentWithMissions({
+      const input = {
         resource_id: resource?.id ?? null,
         title: title.trim(),
         chapter_label: chapterLabel || null,
@@ -203,9 +253,22 @@ export default function NewAssignmentForm({
         excerpt_text: excerpt,
         grade: grade || null,
         due_at: dueAt ? new Date(dueAt).toISOString() : null,
-        missions: missions.map((m, i) => ({ ...m, mission_number: i + 1 })),
-        publish,
-      });
+        reference_images: refImages.map((i) => i.path),
+        is_group: isGroup,
+        group_mode: groupMode,
+        group_max_size: maxSize,
+        group_count: groupCount,
+        missions: missions.map(({ images, ...m }, i) => ({
+          ...m,
+          reference_images: images?.map((img) => img.path) ?? m.reference_images ?? [],
+          mission_number: i + 1,
+        })),
+      };
+      if (editing) {
+        await updateAssignment(editing.id, input);
+      } else {
+        await createAssignmentWithMissions({ ...input, publish });
+      }
       // createAssignmentWithMissions redirige; si llega aquí, no hubo redirect.
     } catch (err) {
       // El redirect de Next lanza NEXT_REDIRECT; no lo tratamos como error.
@@ -234,18 +297,20 @@ export default function NewAssignmentForm({
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">Nueva tarea</h1>
+      <h1 className="text-2xl font-bold">{editing ? "Editar tarea" : "Nueva tarea"}</h1>
 
-      <AssignmentAssistant
-        context={{
-          title,
-          grade,
-          school_cycle: schoolCycle,
-          reading_experience: readingExp,
-        }}
-        bookTitle={resource?.title}
-        onApplyDraft={applyDraft}
-      />
+      {!editing && (
+        <AssignmentAssistant
+          context={{
+            title,
+            grade,
+            school_cycle: schoolCycle,
+            reading_experience: readingExp,
+          }}
+          bookTitle={resource?.title}
+          onApplyDraft={applyDraft}
+        />
+      )}
 
       {/* 1. Recurso */}
       <Section step={1} title="Elige el libro (o usa un fragmento propio)">
@@ -396,7 +461,32 @@ export default function NewAssignmentForm({
               className={inputClass}
             />
           </Labeled>
+          {orgId && (
+            <div className="sm:col-span-2">
+              <span className="text-muted mb-1 block text-xs font-medium">
+                Imágenes de referencia (opcional)
+              </span>
+              <ImageUploader
+                orgId={orgId}
+                folder="refs"
+                value={refImages}
+                onChange={setRefImages}
+              />
+            </div>
+          )}
         </div>
+
+        <GroupSettings
+          isGroup={isGroup}
+          onIsGroup={setIsGroup}
+          mode={groupMode}
+          onMode={setGroupMode}
+          count={groupCount}
+          onCount={setGroupCount}
+          countEditable={!editing?.is_group || editing.group_count === 0}
+          maxSize={groupMaxSize}
+          onMaxSize={setGroupMaxSize}
+        />
       </Section>
 
       {/* 3. Fragmento */}
@@ -502,9 +592,15 @@ export default function NewAssignmentForm({
           <div className="space-y-3">
             {missions.map((m, i) => (
               <MissionEditor
-                key={i}
+                key={m.id ?? `new-${i}`}
                 mission={m}
                 index={i}
+                orgId={orgId}
+                removeWarning={
+                  m.id && editing?.submissionCounts[m.id]
+                    ? `Esta misión ya tiene ${editing.submissionCounts[m.id]} respuesta(s). Al guardar se borrarán también.`
+                    : null
+                }
                 onChange={(updated) =>
                   setMissions((prev) =>
                     prev.map((x, j) => (j === i ? updated : x)),
@@ -524,6 +620,18 @@ export default function NewAssignmentForm({
       )}
 
       <div className="sticky bottom-0 flex gap-3 border-t bg-background/80 py-4 backdrop-blur">
+        {editing ? (
+          <button
+            type="button"
+            onClick={() => save(false)}
+            disabled={busy}
+            className="bg-adventure inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-semibold text-white disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+            Guardar cambios
+          </button>
+        ) : (
+        <>
         <button
           type="button"
           onClick={() => save(false)}
@@ -542,6 +650,8 @@ export default function NewAssignmentForm({
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
           Publicar tarea
         </button>
+        </>
+        )}
       </div>
     </div>
   );
@@ -583,5 +693,91 @@ function Labeled({
       <span className="text-muted mb-1 block text-xs font-medium">{label}</span>
       {children}
     </label>
+  );
+}
+
+function GroupSettings({
+  isGroup,
+  onIsGroup,
+  mode,
+  onMode,
+  count,
+  onCount,
+  countEditable,
+  maxSize,
+  onMaxSize,
+}: {
+  isGroup: boolean;
+  onIsGroup: (v: boolean) => void;
+  mode: GroupMode;
+  onMode: (v: GroupMode) => void;
+  count: number;
+  onCount: (v: number) => void;
+  countEditable: boolean;
+  maxSize: string;
+  onMaxSize: (v: string) => void;
+}) {
+  return (
+    <div className="bg-card mt-3 rounded-xl border p-3">
+      <label className="flex cursor-pointer items-center gap-2 text-sm font-medium">
+        <input
+          type="checkbox"
+          checked={isGroup}
+          onChange={(e) => onIsGroup(e.target.checked)}
+          className="accent-brand h-4 w-4"
+        />
+        <Users className="h-4 w-4 text-brand" />
+        Tarea grupal
+      </label>
+      <p className="text-muted mt-1 text-xs">
+        Cada integrante responde y recibe su propia nota; los resultados se ven agrupados.
+      </p>
+
+      {isGroup && (
+        <div className="mt-3 grid gap-3 sm:grid-cols-3">
+          <Labeled label="Número de grupos">
+            {countEditable ? (
+              <input
+                type="number"
+                min={1}
+                max={30}
+                value={count}
+                onChange={(e) => onCount(parseInt(e.target.value) || 1)}
+                className={inputClass}
+              />
+            ) : (
+              <span className="text-muted block py-2 text-xs">
+                {count} grupo(s). Agrega o quita grupos desde el detalle de la tarea.
+              </span>
+            )}
+          </Labeled>
+          <Labeled label="Máximo por grupo (opcional)">
+            <input
+              type="number"
+              min={1}
+              value={maxSize}
+              onChange={(e) => onMaxSize(e.target.value)}
+              placeholder="Sin límite"
+              className={inputClass}
+            />
+          </Labeled>
+          <Labeled label="¿Quién arma los grupos?">
+            <select
+              value={mode}
+              onChange={(e) => onMode(e.target.value as GroupMode)}
+              className={inputClass}
+            >
+              <option value="teacher">El docente asigna integrantes</option>
+              <option value="self">Cada estudiante elige su grupo</option>
+            </select>
+          </Labeled>
+          <p className="text-muted text-xs sm:col-span-3">
+            {mode === "teacher"
+              ? "Después de guardar, asigna a cada estudiante en la sección «Grupos» del detalle de la tarea."
+              : "Al abrir la tarea, cada estudiante escoge su grupo en una lista desplegable."}
+          </p>
+        </div>
+      )}
+    </div>
   );
 }

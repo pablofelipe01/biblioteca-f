@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import type { Assignment } from "@/lib/types";
-import { Plus, ClipboardList, CalendarClock, GraduationCap, CheckCircle2, FileEdit } from "lucide-react";
+import { Plus, ClipboardList, CalendarClock, GraduationCap, CheckCircle2, FileEdit, Users } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -65,6 +65,11 @@ export default async function TareasPage() {
                   )}
                 </div>
                 <div className="text-muted flex flex-wrap items-center gap-3 text-xs">
+                  {a.is_group && (
+                    <span className="inline-flex items-center gap-1 text-brand">
+                      <Users className="h-3.5 w-3.5" /> Grupal
+                    </span>
+                  )}
                   {a.grade && (
                     <span className="inline-flex items-center gap-1">
                       <GraduationCap className="h-3.5 w-3.5" /> {a.grade}

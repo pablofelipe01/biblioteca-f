@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getSessionProfile } from "@/lib/auth";
 import NewAssignmentForm from "./NewAssignmentForm";
 import type { Resource } from "@/lib/types";
 
@@ -11,6 +12,7 @@ export default async function NuevaTareaPage({
 }) {
   const { resource: resourceId } = await searchParams;
   const supabase = await createClient();
+  const session = await getSessionProfile();
 
   let initialResource = null;
   if (resourceId) {
@@ -43,6 +45,7 @@ export default async function NuevaTareaPage({
     <NewAssignmentForm
       initialResource={initialResource}
       availableGrades={availableGrades}
+      orgId={session?.profile?.org_id ?? null}
     />
   );
 }
