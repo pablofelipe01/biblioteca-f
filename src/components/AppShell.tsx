@@ -11,6 +11,7 @@ import {
   Sparkles,
   Flame,
   Shield,
+  BarChart3,
 } from "lucide-react";
 
 type NavItem = { href: string; label: string; icon: React.ReactNode };
@@ -31,6 +32,7 @@ function navForRole(role: Profile["role"]): NavItem[] {
   if (role === "profesor") {
     return [
       { href: "/tareas", label: "Tareas", icon: <ClipboardList className="h-4 w-4" /> },
+      { href: "/reportes", label: "Notas", icon: <BarChart3 className="h-4 w-4" /> },
       catalog,
       { href: "/preguntas", label: "Preguntas", icon: <MessageCircleQuestion className="h-4 w-4" /> },
     ];

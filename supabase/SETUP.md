@@ -15,6 +15,8 @@ En orden, desde el SQL Editor del dashboard (o con la CLI de Supabase):
 1. `migrations/0001_schema.sql`
 2. `migrations/0002_rls.sql`
 3. `migrations/0003_seed_badges.sql`
+4. `migrations/0004_facets.sql`
+5. `migrations/0005_grupos_imagenes_comentarios.sql` (grupos, imágenes de referencia/respuestas en el bucket privado `leo-images`, comentario del docente)
 
 Con la CLI:
 ```bash

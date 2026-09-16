@@ -71,7 +71,28 @@ export interface Assignment {
   grade: string | null;
   due_at: string | null;
   is_published: boolean;
+  reference_images: string[];
+  is_group: boolean;
+  group_mode: GroupMode;
+  group_max_size: number | null;
   created_at: string;
+}
+
+/** 'teacher' = el docente asigna integrantes; 'self' = cada estudiante elige su grupo. */
+export type GroupMode = "teacher" | "self";
+
+export interface AssignmentGroup {
+  id: string;
+  assignment_id: string;
+  number: number;
+  name: string | null;
+}
+
+export interface AssignmentGroupMember {
+  id: string;
+  group_id: string;
+  assignment_id: string;
+  student_id: string;
 }
 
 export type MissionType = "quiz" | "open" | "creative";
@@ -103,6 +124,7 @@ export interface Mission {
   title: string | null;
   data: MissionData;
   points: number;
+  reference_images: string[];
   created_at: string;
 }
 
@@ -114,6 +136,8 @@ export interface Submission {
   ai_feedback: string | null;
   ai_score: number | null;
   teacher_score: number | null;
+  teacher_comment: string | null;
+  teacher_commented_at: string | null;
   earned_points: number;
   status: "submitted" | "graded";
   created_at: string;
