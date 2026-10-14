@@ -107,6 +107,14 @@ export default async function AventuraPage({
     .order("created_at", { ascending: false });
   const questions = (questionsData as StudentQuestion[] | null) ?? [];
 
+  // Observación general del profe para este alumno en la tarea (RLS: solo la suya).
+  const { data: feedbackRow } = await supabase
+    .from("assignment_feedback")
+    .select("comment")
+    .eq("assignment_id", assignmentId)
+    .eq("student_id", session.userId)
+    .maybeSingle();
+
   const a = assignment as Assignment & {
     resource: {
       title: string;
@@ -218,6 +226,8 @@ export default async function AventuraPage({
         orgId={session.profile?.org_id ?? null}
         userId={session.userId}
         group={group}
+        generalComment={a.general_comment ?? null}
+        myFeedback={(feedbackRow?.comment as string | undefined) ?? null}
       />
     </div>
   );

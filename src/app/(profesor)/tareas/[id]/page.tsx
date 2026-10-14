@@ -30,6 +30,8 @@ export interface StudentRow {
   grade: string | null;
   group_id: string | null;
   result: TaskResult;
+  /** Observación general del docente para este estudiante en la tarea. */
+  feedback: string | null;
   /** Entregas del estudiante indexadas por misión. */
   submissions: Record<string, SubmissionRow>;
 }
@@ -118,6 +120,17 @@ export default async function TareaDetailPage({
     }
   }
 
+  const { data: feedbackRows } = await supabase
+    .from("assignment_feedback")
+    .select("student_id, comment")
+    .eq("assignment_id", id);
+  const feedbackByStudent = new Map(
+    ((feedbackRows as { student_id: string; comment: string }[] | null) ?? []).map((f) => [
+      f.student_id,
+      f.comment,
+    ]),
+  );
+
   const responseImages = (r: unknown): string[] => {
     const imgs = (r as { images?: unknown } | null)?.images;
     return Array.isArray(imgs) ? imgs.filter((p): p is string => typeof p === "string") : [];
@@ -150,6 +163,7 @@ export default async function TareaDetailPage({
     return {
       ...s,
       group_id: groupByStudent.get(s.id) ?? null,
+      feedback: feedbackByStudent.get(s.id) ?? null,
       result: computeTaskResult(missionIds, scores, { dueAt: assignment.due_at, now }),
       submissions: subs,
     };

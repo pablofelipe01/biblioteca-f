@@ -1,14 +1,13 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import ImageGallery from "@/components/ImageGallery";
+import { EmojiTextarea } from "@/components/ObservationEditor";
 import { saveTeacherReview } from "@/app/(profesor)/tareas/actions";
 import { formatNota, notaTone, toNota } from "@/lib/grades";
 import type { Mission } from "@/lib/types";
 import type { SubmissionRow } from "./page";
 import { CheckCircle2, Loader2, MessageSquareText, Save } from "lucide-react";
-
-const EMOJIS = ["👏", "🌟", "💪", "🎉", "👍", "📚", "💡", "🤔", "❤️", "😊", "🚀", "🏆"];
 
 function responseText(mission: Mission, response: unknown): string {
   const resp = response as Record<string, unknown> | null;
@@ -26,9 +25,12 @@ function responseText(mission: Mission, response: unknown): string {
 export default function SubmissionReview({
   mission,
   submission,
+  heading,
 }: {
   mission: Mission;
   submission: SubmissionRow;
+  /** Encabezado de la tarjeta; por defecto, el título de la misión. */
+  heading?: string;
 }) {
   const [nota, setNota] = useState<string>(
     submission.teacher_score != null ? toNota(submission.teacher_score).toFixed(1) : "",
@@ -37,22 +39,10 @@ export default function SubmissionReview({
   const [pending, start] = useTransition();
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const textRef = useRef<HTMLTextAreaElement>(null);
 
   const text = responseText(mission, submission.response);
   const aiNota = submission.ai_score != null ? toNota(submission.ai_score) : null;
 
-  function insertEmoji(emoji: string) {
-    const el = textRef.current;
-    const pos = el?.selectionStart ?? comment.length;
-    const next = comment.slice(0, pos) + emoji + comment.slice(el?.selectionEnd ?? pos);
-    setComment(next);
-    setSaved(false);
-    requestAnimationFrame(() => {
-      el?.focus();
-      el?.setSelectionRange(pos + emoji.length, pos + emoji.length);
-    });
-  }
 
   function save() {
     setError(null);
@@ -75,7 +65,9 @@ export default function SubmissionReview({
   return (
     <div className="rounded-xl border bg-background p-3">
       <div className="mb-1 flex flex-wrap items-center justify-between gap-2 text-xs">
-        <span className="font-semibold">{mission.title ?? `Misión ${mission.mission_number}`}</span>
+        <span className="font-semibold">
+          {heading ?? mission.title ?? `Misión ${mission.mission_number}`}
+        </span>
         <span className="text-muted">
           {new Date(submission.created_at).toLocaleDateString("es")}
         </span>
@@ -120,50 +112,34 @@ export default function SubmissionReview({
 
       <div className="mt-2">
         <label className="text-muted mb-1 flex items-center gap-1 text-xs font-medium">
-          <MessageSquareText className="h-3.5 w-3.5" /> Comentario para el estudiante
+          <MessageSquareText className="h-3.5 w-3.5" /> Comentario sobre esta pregunta
         </label>
-        <textarea
-          ref={textRef}
+        <EmojiTextarea
           value={comment}
-          onChange={(e) => {
-            setComment(e.target.value);
+          onChange={(v) => {
+            setComment(v);
             setSaved(false);
           }}
           rows={2}
           maxLength={1000}
           placeholder="¡Muy buen trabajo! …"
-          className="w-full rounded-lg border bg-card px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
-        />
-        <div className="mt-1 flex flex-wrap items-center gap-1">
-          {EMOJIS.map((e) => (
-            <button
-              key={e}
-              type="button"
-              onClick={() => insertEmoji(e)}
-              className="rounded-lg px-1.5 py-0.5 text-lg leading-none transition hover:scale-110 hover:bg-card"
-              title={`Agregar ${e}`}
-            >
-              {e}
-            </button>
-          ))}
-          <div className="ml-auto flex items-center gap-2">
-            {error && <span className="text-xs text-danger">{error}</span>}
-            {saved && !pending && (
-              <span className="inline-flex items-center gap-1 text-xs text-success">
-                <CheckCircle2 className="h-3.5 w-3.5" /> Guardado
-              </span>
-            )}
-            <button
-              type="button"
-              onClick={save}
-              disabled={pending}
-              className="bg-adventure inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
-            >
-              {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-              Guardar revisión
-            </button>
-          </div>
-        </div>
+        >
+          {error && <span className="text-xs text-danger">{error}</span>}
+          {saved && !pending && (
+            <span className="inline-flex items-center gap-1 text-xs text-success">
+              <CheckCircle2 className="h-3.5 w-3.5" /> Guardado
+            </span>
+          )}
+          <button
+            type="button"
+            onClick={save}
+            disabled={pending}
+            className="bg-adventure inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+          >
+            {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            Guardar revisión
+          </button>
+        </EmojiTextarea>
       </div>
     </div>
   );

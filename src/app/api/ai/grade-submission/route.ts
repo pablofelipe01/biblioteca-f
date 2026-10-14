@@ -12,6 +12,7 @@ import { GRADE_SUBMISSION_SYSTEM } from "@/lib/prompts";
 import { recordGradedSubmission } from "@/lib/gamification";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { IMAGE_BUCKET, MAX_IMAGES, isOwnAnswerPath } from "@/lib/images";
+import { allowsAnswerImages } from "@/lib/assignment-validation";
 import type { MissionType } from "@/lib/types";
 import type Anthropic from "@anthropic-ai/sdk";
 
@@ -107,7 +108,9 @@ export async function POST(req: NextRequest) {
       // open / creative -> evalúa Claude (texto y/o imágenes).
       const studentText = String(rawResponse.text ?? "").trim();
       const orgId = session.profile.org_id ?? "";
-      const images = (Array.isArray(rawResponse.images) ? rawResponse.images : [])
+      const images = (
+        allowsAnswerImages(data) && Array.isArray(rawResponse.images) ? rawResponse.images : []
+      )
         .filter((p): p is string => typeof p === "string")
         .filter((p) => !!orgId && isOwnAnswerPath(p, orgId, session.userId))
         .slice(0, MAX_IMAGES);

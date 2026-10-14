@@ -75,6 +75,9 @@ export interface Assignment {
   is_group: boolean;
   group_mode: GroupMode;
   group_max_size: number | null;
+  /** Observación general del docente para todo el curso. */
+  general_comment: string | null;
+  general_commented_at: string | null;
   created_at: string;
 }
 
@@ -107,11 +110,14 @@ export interface QuizData {
 export interface OpenData {
   prompt: string;
   rubric: string;
+  /** Si el estudiante puede adjuntar fotos (sin definir = sí, por compatibilidad). */
+  allow_images?: boolean;
 }
 
 export interface CreativeData {
   prompt: string;
   min_words: number;
+  allow_images?: boolean;
 }
 
 export type MissionData = QuizData | OpenData | CreativeData;

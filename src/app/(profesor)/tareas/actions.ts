@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getSessionProfile } from "@/lib/auth";
 import { fromNota } from "@/lib/grades";
 import { MAX_IMAGES } from "@/lib/images";
+import { publishProblem } from "@/lib/assignment-validation";
 import type { GroupMode, MissionType, Profile } from "@/lib/types";
 
 export interface MissionInput {
@@ -40,7 +41,12 @@ export interface NewAssignmentInput extends GroupSettingsInput {
   publish: boolean;
 }
 
-export type UpdateAssignmentInput = Omit<NewAssignmentInput, "publish">;
+/** publish: true publica, false deja en borrador, null conserva el estado actual. */
+export type UpdateAssignmentInput = Omit<NewAssignmentInput, "publish"> & {
+  publish: boolean | null;
+};
+
+type AssignmentFieldsInput = Omit<NewAssignmentInput, "publish" | "missions">;
 
 async function requireTeacher(): Promise<{
   userId: string;
@@ -62,19 +68,23 @@ function cleanRefImages(paths: string[] | undefined, orgId: string | null): stri
     .slice(0, MAX_IMAGES);
 }
 
-function assignmentFields(input: UpdateAssignmentInput, orgId: string | null) {
-  if (!input.title?.trim()) throw new Error("El título es obligatorio.");
-  if (!input.excerpt_text?.trim()) throw new Error("El fragmento es obligatorio.");
+/** Al publicar exige la tarea completa; los borradores se guardan como estén. */
+function assertPublishable(input: NewAssignmentInput | UpdateAssignmentInput) {
+  const problem = publishProblem(input);
+  if (problem) throw new Error(problem);
+}
+
+function assignmentFields(input: AssignmentFieldsInput, orgId: string | null) {
   const maxSize =
     input.group_max_size != null && input.group_max_size > 0
       ? Math.round(input.group_max_size)
       : null;
   return {
     resource_id: input.resource_id,
-    title: input.title.trim(),
+    title: input.title?.trim() || "Borrador sin título",
     chapter_label: input.chapter_label,
     instructions: input.instructions,
-    excerpt_text: input.excerpt_text,
+    excerpt_text: input.excerpt_text ?? "",
     grade: input.grade?.trim() || null,
     due_at: input.due_at,
     reference_images: cleanRefImages(input.reference_images, orgId),
@@ -118,6 +128,7 @@ async function ensureGroups(supabase: Db, assignmentId: string, count: number) {
 export async function createAssignmentWithMissions(input: NewAssignmentInput) {
   const { userId, profile } = await requireTeacher();
   const supabase = await createClient();
+  if (input.publish) assertPublishable(input);
 
   const { data: assignment, error } = await supabase
     .from("assignments")
@@ -152,19 +163,26 @@ export async function createAssignmentWithMissions(input: NewAssignmentInput) {
 /**
  * Edita la tarea completa: datos, imágenes, configuración grupal y misiones.
  * Las misiones que ya no vienen se eliminan (y con ellas sus entregas).
+ * Si la tarea queda publicada se exige completa; un borrador puede ir incompleto.
  */
 export async function updateAssignment(assignmentId: string, input: UpdateAssignmentInput) {
   const { profile } = await requireTeacher();
   const supabase = await createClient();
 
-  if (input.missions.length === 0) {
-    throw new Error("La tarea debe tener al menos una misión.");
-  }
+  const { data: existing } = await supabase
+    .from("assignments")
+    .select("is_published")
+    .eq("id", assignmentId)
+    .maybeSingle();
+  if (!existing) throw new Error("Tarea no encontrada.");
+  const willBePublished = input.publish ?? !!existing.is_published;
+  if (willBePublished) assertPublishable(input);
 
   const { data: updated, error } = await supabase
     .from("assignments")
     .update({
       ...assignmentFields(input, profile.org_id),
+      ...(input.publish != null ? { is_published: input.publish } : {}),
       updated_at: new Date().toISOString(),
     })
     .eq("id", assignmentId)
@@ -208,10 +226,33 @@ export async function updateAssignment(assignmentId: string, input: UpdateAssign
   redirect(`/tareas/${assignmentId}`);
 }
 
-/** Publica o despublica una tarea. */
-export async function setPublish(assignmentId: string, publish: boolean) {
+/**
+ * Publica o despublica una tarea. Si falta algo para publicar devuelve el
+ * motivo (en producción Next oculta el mensaje de los errores lanzados).
+ */
+export async function setPublish(
+  assignmentId: string,
+  publish: boolean,
+): Promise<{ error: string | null }> {
   await requireTeacher();
   const supabase = await createClient();
+  if (publish) {
+    const [{ data: a }, { data: ms }] = await Promise.all([
+      supabase.from("assignments").select("title, excerpt_text").eq("id", assignmentId).maybeSingle(),
+      supabase
+        .from("missions")
+        .select("type, data")
+        .eq("assignment_id", assignmentId)
+        .order("mission_number", { ascending: true }),
+    ]);
+    if (!a) throw new Error("Tarea no encontrada.");
+    const problem = publishProblem({
+      title: a.title as string,
+      excerpt_text: a.excerpt_text as string | null,
+      missions: (ms as { type: string; data: Record<string, unknown> }[] | null) ?? [],
+    });
+    if (problem) return { error: `Aún no se puede publicar: ${problem}` };
+  }
   const { error } = await supabase
     .from("assignments")
     .update({ is_published: publish })
@@ -219,6 +260,7 @@ export async function setPublish(assignmentId: string, publish: boolean) {
   if (error) throw new Error(error.message);
   revalidatePath(`/tareas/${assignmentId}`);
   revalidatePath("/tareas");
+  return { error: null };
 }
 
 /** Actualiza el curso destinatario (grade) de una tarea. */
@@ -323,6 +365,50 @@ export async function saveTeacherReview(
   const aid = (data?.mission as unknown as { assignment_id: string } | null)?.assignment_id;
   if (aid) revalidatePath(`/tareas/${aid}`);
   revalidatePath("/reportes");
+}
+
+/** Observación general del docente para todo el curso en una tarea. */
+export async function saveGeneralComment(assignmentId: string, comment: string) {
+  await requireTeacher();
+  const supabase = await createClient();
+  const text = comment.trim().slice(0, 2000);
+  const { error } = await supabase
+    .from("assignments")
+    .update({
+      general_comment: text || null,
+      general_commented_at: text ? new Date().toISOString() : null,
+    })
+    .eq("id", assignmentId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/tareas/${assignmentId}`);
+}
+
+/** Observación general del docente para un estudiante en una tarea (vacía la borra). */
+export async function saveStudentFeedback(
+  assignmentId: string,
+  studentId: string,
+  comment: string,
+) {
+  await requireTeacher();
+  const supabase = await createClient();
+  const text = comment.trim().slice(0, 2000);
+  const { error } = text
+    ? await supabase.from("assignment_feedback").upsert(
+        {
+          assignment_id: assignmentId,
+          student_id: studentId,
+          comment: text,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "assignment_id,student_id" },
+      )
+    : await supabase
+        .from("assignment_feedback")
+        .delete()
+        .eq("assignment_id", assignmentId)
+        .eq("student_id", studentId);
+  if (error) throw new Error(error.message);
+  revalidatePath(`/tareas/${assignmentId}`);
 }
 
 /** Responde una pregunta de un estudiante. */

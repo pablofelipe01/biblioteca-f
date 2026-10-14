@@ -4,6 +4,7 @@ import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import MissionEditor, { type EditorMission } from "@/components/MissionEditor";
 import ImageUploader, { type UploadedImage } from "@/components/ImageUploader";
+import { ExcerptText } from "@/components/ExcerptReader";
 import AssignmentAssistant, {
   type AssignmentDraft,
 } from "@/components/AssignmentAssistant";
@@ -19,6 +20,7 @@ import {
   type MissionType,
   type Resource,
 } from "@/lib/types";
+import { MIN_EXCERPT_CHARS, publishProblem } from "@/lib/assignment-validation";
 import {
   Search,
   Upload,
@@ -31,6 +33,7 @@ import {
   Save,
   Send,
   Users,
+  ImageIcon,
 } from "lucide-react";
 
 const inputClass =
@@ -45,6 +48,7 @@ export type PickedResource = Pick<
 export interface EditableAssignment {
   id: string;
   title: string;
+  is_published: boolean;
   chapter_label: string | null;
   instructions: string | null;
   excerpt_text: string;
@@ -94,8 +98,12 @@ export default function NewAssignmentForm({
   const [grade, setGrade] = useState(editing?.grade ?? "");
   const [dueAt, setDueAt] = useState(toLocalInput(editing?.due_at ?? null));
   const [excerpt, setExcerpt] = useState(editing?.excerpt_text ?? "");
+  const [previewExcerpt, setPreviewExcerpt] = useState(false);
   const [refImages, setRefImages] = useState<UploadedImage[]>(
     editing?.reference_images ?? [],
+  );
+  const [showRefImages, setShowRefImages] = useState(
+    (editing?.reference_images.length ?? 0) > 0,
   );
   const [isGroup, setIsGroup] = useState(editing?.is_group ?? false);
   const [groupMode, setGroupMode] = useState<GroupMode>(editing?.group_mode ?? "teacher");
@@ -205,7 +213,8 @@ export default function NewAssignmentForm({
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error ?? "Error al generar misiones");
-      const generated = json.missions as MissionInput[];
+      // Las fotos en la respuesta quedan desactivadas hasta que el docente las active.
+      const generated = (json.missions as MissionInput[]).map(withImagesOff);
       // Al editar, las nuevas se agregan para no borrar misiones con respuestas.
       setMissions((prev) => (editing ? [...prev, ...generated] : generated));
     } catch (err) {
@@ -225,19 +234,23 @@ export default function NewAssignmentForm({
         type === "quiz"
           ? { question: "", options: ["", "", "", ""], correct_index: 0, explanation: "" }
           : type === "open"
-            ? { prompt: "", rubric: "" }
-            : { prompt: "", min_words: 40 },
+            ? { prompt: "", rubric: "", allow_images: false }
+            : { prompt: "", min_words: 40, allow_images: false },
     };
     setMissions((prev) => [...prev, base]);
   }
 
-  async function save(publish: boolean) {
+  /**
+   * publish: true publica, false guarda como borrador, null conserva el estado
+   * (editar una tarea ya publicada). Solo se exige la tarea completa si queda publicada.
+   */
+  async function save(publish: boolean | null) {
     setError(null);
-    if (!title.trim()) return setError("Ponle un título a la tarea.");
-    if (excerpt.trim().length < 50)
-      return setError("Pega o sube un fragmento (mínimo 50 caracteres).");
-    if (missions.length === 0)
-      return setError("Agrega al menos una misión (genera con IA o manual).");
+    const willBePublished = publish ?? !!editing?.is_published;
+    if (willBePublished) {
+      const problem = publishProblem({ title, excerpt_text: excerpt, missions });
+      if (problem) return setError(problem);
+    }
 
     const maxSize = groupMaxSize.trim() ? parseInt(groupMaxSize) : null;
     if (isGroup && (groupCount < 1 || (maxSize != null && (Number.isNaN(maxSize) || maxSize < 1))))
@@ -265,9 +278,9 @@ export default function NewAssignmentForm({
         })),
       };
       if (editing) {
-        await updateAssignment(editing.id, input);
+        await updateAssignment(editing.id, { ...input, publish });
       } else {
-        await createAssignmentWithMissions({ ...input, publish });
+        await createAssignmentWithMissions({ ...input, publish: !!publish });
       }
       // createAssignmentWithMissions redirige; si llega aquí, no hubo redirect.
     } catch (err) {
@@ -288,7 +301,7 @@ export default function NewAssignmentForm({
     if (draft.excerpt_text && draft.excerpt_text.trim()) setExcerpt(draft.excerpt_text);
     if (draft.missions && draft.missions.length > 0) {
       setMissions(
-        draft.missions.map((m, i) => ({ ...m, mission_number: i + 1 })),
+        draft.missions.map((m, i) => ({ ...withImagesOff(m), mission_number: i + 1 })),
       );
     }
   }
@@ -463,15 +476,36 @@ export default function NewAssignmentForm({
           </Labeled>
           {orgId && (
             <div className="sm:col-span-2">
-              <span className="text-muted mb-1 block text-xs font-medium">
-                Imágenes de referencia (opcional)
-              </span>
-              <ImageUploader
-                orgId={orgId}
-                folder="refs"
-                value={refImages}
-                onChange={setRefImages}
-              />
+              {showRefImages ? (
+                <>
+                  <span className="text-muted mb-1 flex items-center justify-between text-xs font-medium">
+                    Imágenes de referencia (opcional)
+                    {refImages.length === 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowRefImages(false)}
+                        className="hover:text-danger"
+                      >
+                        Quitar
+                      </button>
+                    )}
+                  </span>
+                  <ImageUploader
+                    orgId={orgId}
+                    folder="refs"
+                    value={refImages}
+                    onChange={setRefImages}
+                  />
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowRefImages(true)}
+                  className="text-muted inline-flex items-center gap-1.5 text-xs font-medium hover:text-brand"
+                >
+                  <ImageIcon className="h-3.5 w-3.5" /> Agregar imágenes de referencia
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -491,13 +525,26 @@ export default function NewAssignmentForm({
 
       {/* 3. Fragmento */}
       <Section step={3} title="El fragmento a leer">
-        <textarea
-          value={excerpt}
-          onChange={(e) => setExcerpt(e.target.value)}
-          rows={10}
-          placeholder="Pega aquí el texto del fragmento (uso educativo acotado)…"
-          className={`${inputClass} font-mono text-xs leading-relaxed`}
-        />
+        {previewExcerpt ? (
+          <div className="bg-card max-h-[28rem] overflow-auto rounded-xl border p-4">
+            {excerpt.trim() ? (
+              <ExcerptText text={excerpt} fontSize={16} />
+            ) : (
+              <p className="text-muted text-sm italic">Aún no hay fragmento.</p>
+            )}
+          </div>
+        ) : (
+          <textarea
+            value={excerpt}
+            onChange={(e) => setExcerpt(e.target.value)}
+            rows={10}
+            placeholder="Pega aquí el texto del fragmento (uso educativo acotado)…"
+            className={`${inputClass} leading-relaxed`}
+          />
+        )}
+        <p className="text-muted mt-1 text-xs">
+          Los párrafos se respetan al pegar. Para separar párrafos a mano, deja una línea en blanco.
+        </p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <label className="bg-card inline-flex cursor-pointer items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-medium hover:border-brand">
             {parsing ? (
@@ -521,7 +568,7 @@ export default function NewAssignmentForm({
           <button
             type="button"
             onClick={summarize}
-            disabled={busy || excerpt.trim().length < 50}
+            disabled={busy || excerpt.trim().length < MIN_EXCERPT_CHARS}
             className="bg-card inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-medium hover:border-brand disabled:opacity-50"
           >
             {summarizing ? (
@@ -530,6 +577,14 @@ export default function NewAssignmentForm({
               <Sparkles className="h-4 w-4" />
             )}
             Resumir con IA
+          </button>
+          <button
+            type="button"
+            onClick={() => setPreviewExcerpt((v) => !v)}
+            className="bg-card inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm font-medium hover:border-brand"
+          >
+            <BookOpen className="h-4 w-4" />
+            {previewExcerpt ? "Editar texto" : "Ver como el estudiante"}
           </button>
           <span className="text-muted text-xs">{excerpt.length} caracteres</span>
         </div>
@@ -560,7 +615,7 @@ export default function NewAssignmentForm({
           <button
             type="button"
             onClick={generateMissions}
-            disabled={busy || excerpt.trim().length < 50}
+            disabled={busy || excerpt.trim().length < MIN_EXCERPT_CHARS}
             className="bg-adventure inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white disabled:opacity-50"
           >
             {generating ? (
@@ -570,18 +625,7 @@ export default function NewAssignmentForm({
             )}
             Generar misiones con IA
           </button>
-          <span className="text-muted text-xs">o agrega manualmente:</span>
-          {(["quiz", "open", "creative"] as MissionType[]).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => addMission(t)}
-              className="bg-card inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium hover:border-brand"
-            >
-              <Plus className="h-3.5 w-3.5" />
-              {t === "quiz" ? "Quiz" : t === "open" ? "Abierta" : "Creativa"}
-            </button>
-          ))}
+          <span className="text-muted text-xs">o agrega preguntas manualmente al final.</span>
         </div>
 
         {missions.length === 0 ? (
@@ -613,6 +657,22 @@ export default function NewAssignmentForm({
             ))}
           </div>
         )}
+
+        {/* Al final, para agregar sin volver a subir. */}
+        <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-dashed p-3">
+          <span className="text-muted text-xs">Agregar pregunta:</span>
+          {(["quiz", "open", "creative"] as MissionType[]).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => addMission(t)}
+              className="bg-card inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-medium hover:border-brand"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              {t === "quiz" ? "Quiz" : t === "open" ? "Abierta" : "Creativa"}
+            </button>
+          ))}
+        </div>
       </Section>
 
       {error && (
@@ -620,10 +680,10 @@ export default function NewAssignmentForm({
       )}
 
       <div className="sticky bottom-0 flex gap-3 border-t bg-background/80 py-4 backdrop-blur">
-        {editing ? (
+        {editing?.is_published ? (
           <button
             type="button"
-            onClick={() => save(false)}
+            onClick={() => save(null)}
             disabled={busy}
             className="bg-adventure inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-semibold text-white disabled:opacity-50"
           >
@@ -648,13 +708,19 @@ export default function NewAssignmentForm({
           className="bg-adventure inline-flex items-center gap-2 rounded-xl px-4 py-2.5 font-semibold text-white disabled:opacity-50"
         >
           {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          Publicar tarea
+          {editing ? "Guardar y publicar" : "Publicar tarea"}
         </button>
         </>
         )}
       </div>
     </div>
   );
+}
+
+/** Misiones nuevas: sin fotos en la respuesta hasta que el docente las active. */
+function withImagesOff<T extends MissionInput>(m: T): T {
+  if (m.type === "quiz") return m;
+  return { ...m, data: { ...m.data, allow_images: false } };
 }
 
 function Section({
