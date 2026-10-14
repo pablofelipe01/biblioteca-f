@@ -3,7 +3,10 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import ImageGallery from "@/components/ImageGallery";
+import { ExcerptText } from "@/components/ExcerptReader";
+import ObservationEditor from "@/components/ObservationEditor";
 import {
+  saveGeneralComment,
   setPublish,
   updateAssignmentGrade,
 } from "@/app/(profesor)/tareas/actions";
@@ -26,6 +29,7 @@ import {
   PenLine,
   Wand2,
   Users,
+  Megaphone,
 } from "lucide-react";
 
 const TYPE_LABEL = {
@@ -51,17 +55,24 @@ export default function AssignmentDetail({
 }) {
   const [published, setPublished] = useState(assignment.is_published);
   const [pubPending, startPub] = useTransition();
+  const [pubError, setPubError] = useState<string | null>(null);
   const [showExcerpt, setShowExcerpt] = useState(false);
   const [showMissions, setShowMissions] = useState(false);
 
   function togglePublish() {
     const next = !published;
     setPublished(next);
+    setPubError(null);
     startPub(async () => {
       try {
-        await setPublish(assignment.id, next);
+        const { error } = await setPublish(assignment.id, next);
+        if (error) {
+          setPublished(!next);
+          setPubError(error);
+        }
       } catch {
         setPublished(!next); // revertir si falla
+        setPubError("No se pudo actualizar la tarea.");
       }
     });
   }
@@ -69,7 +80,7 @@ export default function AssignmentDetail({
   return (
     <div className="space-y-6">
       {/* Cabecera */}
-      <div className="bg-card flex flex-col gap-3 rounded-2xl border p-5 sm:flex-row sm:items-center">
+      <div className="bg-card flex flex-col gap-3 rounded-2xl border p-5 sm:flex-row sm:flex-wrap sm:items-center">
         <div className="flex-1">
           <h1 className="text-2xl font-bold">{assignment.title}</h1>
           <p className="text-muted text-sm">
@@ -119,6 +130,19 @@ export default function AssignmentDetail({
             {published ? "Despublicar" : "Publicar"}
           </button>
         </div>
+        {!published && (
+          <p className="basis-full rounded-lg bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-700">
+            Borrador: los estudiantes aún no ven esta tarea.
+          </p>
+        )}
+        {pubError && (
+          <p className="basis-full rounded-lg bg-red-50 px-3 py-1.5 text-xs text-danger">
+            {pubError}{" "}
+            <Link href={`/tareas/${assignment.id}/editar`} className="font-semibold underline">
+              Completar la tarea
+            </Link>
+          </p>
+        )}
       </div>
 
       {(assignment.instructions || referenceImages.length > 0) && (
@@ -143,9 +167,9 @@ export default function AssignmentDetail({
             )}
           </button>
           {showExcerpt && (
-            <pre className="max-h-96 overflow-auto whitespace-pre-wrap border-t p-4 font-mono text-xs leading-relaxed">
-              {assignment.excerpt_text}
-            </pre>
+            <div className="max-h-[32rem] overflow-auto border-t p-4">
+              <ExcerptText text={assignment.excerpt_text} fontSize={15} />
+            </div>
           )}
         </div>
       )}
@@ -192,11 +216,27 @@ export default function AssignmentDetail({
       )}
 
       <StudentResults
+        assignmentId={assignment.id}
         missions={missions}
         students={students}
         isGroup={assignment.is_group}
         groups={groups}
       />
+
+      <section className="bg-card rounded-2xl border p-4">
+        <h2 className="mb-1 flex items-center gap-1.5 font-semibold">
+          <Megaphone className="h-4 w-4 text-brand" /> Observación general para el grupo
+        </h2>
+        <p className="text-muted mb-3 text-xs">
+          Todos los estudiantes del curso la verán al final de la tarea.
+        </p>
+        <ObservationEditor
+          initial={assignment.general_comment}
+          onSave={(text) => saveGeneralComment(assignment.id, text)}
+          label="Mensaje para todo el grupo"
+          placeholder="¡Gran trabajo, grupo! Hoy aprendimos…"
+        />
+      </section>
     </div>
   );
 }

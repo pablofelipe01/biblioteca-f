@@ -221,8 +221,14 @@ export default async function ProgresoPage() {
                                   : r.position}
                         </td>
                         <td className="px-3 py-2">
-                          {r.student.full_name ?? "Estudiante"}
-                          {isMe && <span className="text-brand"> (tú)</span>}
+                          {isMe ? (
+                            <>
+                              {r.student.full_name ?? "Estudiante"}
+                              <span className="text-brand"> (tú)</span>
+                            </>
+                          ) : (
+                            <span className="text-muted">Anónimo</span>
+                          )}
                         </td>
                         <td className="text-muted px-3 py-2 text-right">
                           {r.finishedCount}/{r.assignedCount}
@@ -235,6 +241,9 @@ export default async function ProgresoPage() {
                   })}
                 </tbody>
               </table>
+              <p className="text-muted border-t px-3 py-2 text-xs">
+                Por respeto a todos, solo ves tu nombre; tus compañeros aparecen como «Anónimo».
+              </p>
             </div>
           )}
         </section>

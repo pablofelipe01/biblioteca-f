@@ -6,8 +6,23 @@ import ProgressBar from "@/components/ProgressBar";
 import { averageNota, formatNota, notaTone } from "@/lib/grades";
 import type { AssignmentGroup } from "@/lib/types";
 import type { MissionWithImages, StudentRow } from "./page";
+import ObservationEditor from "@/components/ObservationEditor";
+import { saveStudentFeedback } from "@/app/(profesor)/tareas/actions";
 import SubmissionReview from "./SubmissionReview";
-import { CheckCircle2, ChevronDown, ChevronUp, CircleDashed, Clock, Inbox, Star, Users } from "lucide-react";
+import QuestionResults from "./QuestionResults";
+import {
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  CircleDashed,
+  Clock,
+  Inbox,
+  ListChecks,
+  NotebookPen,
+  Star,
+  User,
+  Users,
+} from "lucide-react";
 
 type Filter = "todos" | "terminaron" | "progreso" | "sin_empezar";
 
@@ -24,17 +39,20 @@ function status(s: StudentRow): Exclude<Filter, "todos"> {
 }
 
 export default function StudentResults({
+  assignmentId,
   missions,
   students,
   isGroup,
   groups,
 }: {
+  assignmentId: string;
   missions: MissionWithImages[];
   students: StudentRow[];
   isGroup: boolean;
   groups: AssignmentGroup[];
 }) {
   const [filter, setFilter] = useState<Filter>("todos");
+  const [view, setView] = useState<"estudiante" | "pregunta">("estudiante");
 
   const counts = {
     terminaron: students.filter((s) => status(s) === "terminaron").length,
@@ -98,6 +116,30 @@ export default function StudentResults({
         </p>
       ) : (
         <>
+          <div className="inline-flex overflow-hidden rounded-xl border text-sm font-medium">
+            {(
+              [
+                { key: "estudiante", label: "Por estudiante", icon: <User className="h-4 w-4" /> },
+                { key: "pregunta", label: "Por pregunta", icon: <ListChecks className="h-4 w-4" /> },
+              ] as const
+            ).map((v) => (
+              <button
+                key={v.key}
+                type="button"
+                onClick={() => setView(v.key)}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 transition ${
+                  view === v.key ? "bg-adventure text-white" : "bg-card hover:bg-background"
+                }`}
+              >
+                {v.icon} {v.label}
+              </button>
+            ))}
+          </div>
+
+          {view === "pregunta" ? (
+            <QuestionResults missions={missions} students={students} />
+          ) : (
+          <>
           <div className="flex flex-wrap gap-1.5">
             {FILTERS.map((f) => (
               <button
@@ -138,12 +180,19 @@ export default function StudentResults({
                   )}
                   <ul className="divide-y">
                     {b.rows.map((s) => (
-                      <StudentItem key={s.id} student={s} missions={missions} />
+                      <StudentItem
+                        key={s.id}
+                        assignmentId={assignmentId}
+                        student={s}
+                        missions={missions}
+                      />
                     ))}
                   </ul>
                 </div>
               ))}
             </div>
+          )}
+          </>
           )}
 
           <div className="bg-card rounded-2xl border p-4">
@@ -191,9 +240,11 @@ function Tile({
 }
 
 function StudentItem({
+  assignmentId,
   student,
   missions,
 }: {
+  assignmentId: string;
   student: StudentRow;
   missions: MissionWithImages[];
 }) {
@@ -216,7 +267,14 @@ function StudentItem({
           <CircleDashed className="text-muted h-5 w-5 shrink-0" />
         )}
         <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium">{student.full_name ?? "Estudiante"}</p>
+          <p className="flex items-center gap-1.5 truncate text-sm font-medium">
+            {student.full_name ?? "Estudiante"}
+            {student.feedback && (
+              <span title="Tiene observación general">
+                <NotebookPen className="h-3.5 w-3.5 text-brand" />
+              </span>
+            )}
+          </p>
           <div className="mt-1 max-w-48">
             <ProgressBar value={student.result.answered} max={student.result.total} />
           </div>
@@ -238,6 +296,15 @@ function StudentItem({
               <SubmissionReview key={m.id} mission={m} submission={student.submissions[m.id]} />
             ))
           )}
+          <div className="rounded-xl border border-brand/30 bg-brand/5 p-3">
+            <ObservationEditor
+              initial={student.feedback}
+              onSave={(text) => saveStudentFeedback(assignmentId, student.id, text)}
+              icon={<NotebookPen className="h-3.5 w-3.5" />}
+              label={`Observación general para ${student.full_name ?? "el estudiante"} en esta tarea`}
+              placeholder="¿Cómo le fue en toda la misión? Un mensaje para el estudiante…"
+            />
+          </div>
         </div>
       )}
     </li>

@@ -89,6 +89,7 @@ export default async function EditarTareaPage({
         editing={{
           id: assignment.id,
           title: assignment.title,
+          is_published: !!assignment.is_published,
           chapter_label: assignment.chapter_label,
           instructions: assignment.instructions,
           excerpt_text: assignment.excerpt_text ?? "",

@@ -8,8 +8,10 @@ import type { GroupInfo, StudentMission, StudentQuestion } from "./page";
 import type { AccessLink } from "@/lib/types";
 import type { SignedImage } from "@/lib/images-server";
 import ImageGallery from "@/components/ImageGallery";
+import ExcerptReader from "@/components/ExcerptReader";
 import ImageUploader, { type UploadedImage } from "@/components/ImageUploader";
 import { formatNota, notaTone, toNota } from "@/lib/grades";
+import { allowsAnswerImages } from "@/lib/assignment-validation";
 import {
   Lock,
   CheckCircle2,
@@ -56,6 +58,8 @@ export default function AventuraClient({
   orgId,
   userId,
   group,
+  generalComment,
+  myFeedback,
 }: {
   assignmentId: string;
   title: string;
@@ -69,6 +73,8 @@ export default function AventuraClient({
   orgId: string | null;
   userId: string;
   group: GroupInfo | null;
+  generalComment: string | null;
+  myFeedback: string | null;
 }) {
   const router = useRouter();
   const [missions, setMissions] = useState<Mission[]>(initial);
@@ -76,6 +82,8 @@ export default function AventuraClient({
     { code: string; name: string; icon: string | null }[] | null
   >(null);
   const [celebrate, setCelebrate] = useState(false);
+  // «Ancho completo»: el fragmento ocupa toda la fila y las misiones van debajo.
+  const [wide, setWide] = useState(false);
 
   const completedCount = missions.filter((m) => m.done).length;
   const percent =
@@ -108,7 +116,7 @@ export default function AventuraClient({
   }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_1.1fr]">
+    <div className={`grid gap-6 ${wide ? "" : "lg:grid-cols-[1fr_1.1fr]"}`}>
       {/* Panel de lectura */}
       <div className="space-y-4">
         <div>
@@ -148,12 +156,14 @@ export default function AventuraClient({
           </div>
         )}
 
-        <div className="bg-card rounded-2xl border">
-          <p className="border-b p-4 text-sm font-semibold">Fragmento</p>
-          <div className="max-h-[60vh] overflow-auto p-4">
-            <p className="whitespace-pre-wrap text-sm leading-relaxed">{excerpt}</p>
-          </div>
-        </div>
+        {excerpt.trim() && (
+          <ExcerptReader
+            text={excerpt}
+            title={title}
+            wide={wide}
+            onToggleWide={() => setWide((v) => !v)}
+          />
+        )}
 
         <AskTeacher assignmentId={assignmentId} questions={questions} />
       </div>
@@ -202,6 +212,26 @@ export default function AventuraClient({
             );
           })}
         </ol>
+
+        {(myFeedback || generalComment) && (
+          <div className="rounded-2xl border border-accent/40 bg-amber-50 p-4">
+            <p className="mb-2 inline-flex items-center gap-1.5 font-semibold text-amber-700">
+              <MessageSquareHeart className="h-5 w-5" /> Observaciones de tu profe
+            </p>
+            {myFeedback && (
+              <div className="mb-3 last:mb-0">
+                <p className="text-xs font-medium text-amber-700/80">Para ti</p>
+                <p className="whitespace-pre-wrap text-base leading-relaxed">{myFeedback}</p>
+              </div>
+            )}
+            {generalComment && (
+              <div>
+                <p className="text-xs font-medium text-amber-700/80">Para todo el grupo</p>
+                <p className="whitespace-pre-wrap text-base leading-relaxed">{generalComment}</p>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       <TutorChat assignmentId={assignmentId} />
@@ -270,6 +300,7 @@ function MissionStep({
   const d = mission.data;
   const options = (d.options as string[]) ?? [];
   const minWords = (d.min_words as number) ?? 0;
+  const imagesAllowed = !!orgId && allowsAnswerImages(d);
 
   async function submit() {
     setError(null);
@@ -279,7 +310,7 @@ function MissionStep({
       response = { selected_index: selected };
     } else {
       if (text.trim().length < 1 && images.length === 0)
-        return setError("Escribe tu respuesta o sube una imagen.");
+        return setError(imagesAllowed ? "Escribe tu respuesta o sube una imagen." : "Escribe tu respuesta.");
       response = { text: text.trim(), images: images.map((i) => i.path) };
     }
 
@@ -441,7 +472,7 @@ function MissionStep({
                   {wordCount}/{minWords} palabras
                 </p>
               )}
-              {orgId && (
+              {imagesAllowed && orgId && (
                 <div>
                   <p className="text-muted mb-1.5 text-xs">
                     ¿Hiciste un dibujo o lo escribiste en tu cuaderno? Súbele una foto.

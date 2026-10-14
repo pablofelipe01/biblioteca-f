@@ -3,7 +3,8 @@
 import { useState } from "react";
 import type { MissionInput } from "@/app/(profesor)/tareas/actions";
 import ImageUploader, { type UploadedImage } from "@/components/ImageUploader";
-import { Trash2, HelpCircle, PenLine, Wand2, ImageIcon } from "lucide-react";
+import { allowsAnswerImages } from "@/lib/assignment-validation";
+import { Trash2, HelpCircle, PenLine, Wand2, ImageIcon, Camera } from "lucide-react";
 
 /** Misión en edición: además de las rutas guarda las previsualizaciones. */
 export type EditorMission = MissionInput & { images?: UploadedImage[] };
@@ -39,6 +40,7 @@ export default function MissionEditor({
 }) {
   const meta = TYPE_META[mission.type];
   const [confirming, setConfirming] = useState(false);
+  const [showRefImages, setShowRefImages] = useState((mission.images?.length ?? 0) > 0);
 
   function setData(patch: Record<string, unknown>) {
     onChange({ ...mission, data: { ...mission.data, ...patch } });
@@ -195,10 +197,40 @@ export default function MissionEditor({
           </label>
         </div>
       )}
-      {orgId && (
+      {mission.type !== "quiz" && (
+        <label className="mt-3 flex cursor-pointer items-center gap-2 border-t pt-3 text-xs font-medium">
+          <input
+            type="checkbox"
+            checked={allowsAnswerImages(d)}
+            onChange={(e) => setData({ allow_images: e.target.checked })}
+            className="accent-brand h-4 w-4"
+          />
+          <Camera className="h-3.5 w-3.5 text-brand" />
+          Permitir que el estudiante adjunte una foto en su respuesta
+        </label>
+      )}
+      {orgId && !showRefImages && (
+        <button
+          type="button"
+          onClick={() => setShowRefImages(true)}
+          className="text-muted mt-3 flex items-center gap-1.5 text-xs font-medium hover:text-brand"
+        >
+          <ImageIcon className="h-3.5 w-3.5" /> Agregar imagen de referencia
+        </button>
+      )}
+      {orgId && showRefImages && (
         <div className="mt-3 border-t pt-3">
           <p className="text-muted mb-2 flex items-center gap-1.5 text-xs font-medium">
             <ImageIcon className="h-3.5 w-3.5" /> Imágenes de referencia (opcional)
+            {(mission.images?.length ?? 0) === 0 && (
+              <button
+                type="button"
+                onClick={() => setShowRefImages(false)}
+                className="ml-auto hover:text-danger"
+              >
+                Quitar
+              </button>
+            )}
           </p>
           <ImageUploader
             orgId={orgId}
